@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ quiz.title }} — Car-Hoot{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'accounts:admin_panel' %}">Admin panel</a></li>
+    <li class="breadcrumb-item"><a href="{{ back_url }}">{{ course.title }}</a></li>
+    <li class="breadcrumb-item active">Edit quiz</li>
+  </ol>
+</nav>
+
+{{ quiz_initial|json_script:"quiz-initial-data" }}
+{{ section_options|json_script:"section-options-data" }}
+
+<div class="sticky-top bg-white border-bottom py-2 mb-3 shadow-sm" style="z-index: 1020;">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{{ back_url }}">Back to course</a>
+      <span class="text-muted small d-none d-md-inline">Autosave is manual — click Save quiz.</span>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-primary btn-sm" href="{{ preview_url }}" target="_blank" rel="noopener">Preview</a>
+      <button type="submit" form="quiz-editor-form" class="btn btn-primary btn-sm">Save quiz</button>
+    </div>
+  </div>
+</div>
+
+<h1 class="h3 mb-3">Edit quiz</h1>
+
+<form id="quiz-editor-form" method="post" novalidate>
+  {% csrf_token %}
+  <input type="hidden" name="quiz_payload" id="quiz-payload" value="">
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label" for="quiz-title">Quiz title</label>
+        <input type="text" class="form-control" id="quiz-title" autocomplete="off">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="quiz-description">Description</label>
+        <textarea class="form-control" id="quiz-description" rows="2"></textarea>
+      </div>
+      <div class="mb-0">
+        <label class="form-label" for="quiz-pass-mark">Pass mark (%)</label>
+        <input type="number" class="form-control" id="quiz-pass-mark" min="0" max="100" step="1" style="max-width: 8rem;">
+      </div>
+    </div>
+  </div>
+
+  <div id="questions-root" class="mb-3"></div>
+
+  <div id="empty-questions" class="alert alert-light border d-none mb-4">
+    <p class="mb-2">No questions yet. Add your first question to build this quiz.</p>
+    <button type="button" class="btn btn-primary btn-sm" id="btn-add-first-question">Add question</button>
+  </div>
+
+  <button type="button" class="btn btn-outline-primary mb-5" id="btn-add-question-bottom">+ Add question</button>
+</form>
+
+<script>
+(function () {
+  function readJsonScript(id) {
+    var el = document.getElementById(id);
+    if (!el || !el.textContent) return null;
+    try { return JSON.parse(el.textContent); } catch (e) { return null; }
+  }
+
+  function escapeHtml(str) {
+    if (str == null) return '';
+    var d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  var initial = readJsonScript('quiz-initial-data') || { title: '', description: '', pass_mark: 70, questions: [] };
+  var sectionOptions = readJsonScript('section-options-data') || [];
+
+  var titleEl = document.getElementById('quiz-title');
+  var descEl = document.getElementById('quiz-description');
+  var passEl = document.getElementById('quiz-pass-mark');
+  var root = document.getElementById('questions-root');
+  var emptyBox = document.getElementById('empty-questions');
+  var form = document.getElementById('quiz-editor-form');
+  var payloadInput = document.getElementById('quiz-payload');
+
+  titleEl.value = initial.title || '';
+  descEl.value = initial.description || '';
+  passEl.value = initial.pass_mark != null ? initial.pass_mark : 70;
+
+  function sectionSelectHtml(selectedId) {
+    var html = '<option value="">— None —</option>';
+    for (var i = 0; i < sectionOptions.length; i++) {
+      var o = sectionOptions[i];
+      var sel = String(o.id) === String(selectedId == null ? '' : selectedId) ? ' selected' : '';
+      html += '<option value="' + o.id + '"' + sel + '>' + escapeHtml(o.label) + '</option>';
+    }
+    return '<select class="form-select form-select-sm js-section">' + html + '</select>';
+  }
+
+  function answerRowHtml(a) {
+    var idVal = a && a.id != null && a.id > 0 ? String(a.id) : '';
+    var text = a && a.answer_text ? a.answer_text : '';
+    var chk = a && a.is_correct ? ' checked' : '';
+    return (
+      '<div class="d-flex align-items-start gap-2 mb-2 js-answer-row">' +
+        '<input type="hidden" class="js-answer-id" value="' + escapeHtml(idVal) + '">' +
+        '<div class="flex-grow-1 min-w-0">' +
+          '<input type="text" class="form-control js-answer-text" value="' + escapeHtml(text) + '" placeholder="Answer option">' +
+        '</div>' +
+        '<div class="form-check mt-2 flex-shrink-0">' +
+          '<input class="form-check-input js-answer-correct" type="checkbox"' + chk + '>' +
+          '<label class="form-check-label small text-nowrap">Correct</label>' +
+        '</div>' +
+        '<button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0 js-remove-answer">Remove</button>' +
+      '</div>'
+    );
+  }
+
+  function questionCardHtml(q) {
+    var qidVal = q && q.id != null && q.id > 0 ? String(q.id) : '';
+    var qtext = q && q.question_text ? q.question_text : '';
+    var expl = q && q.explanation ? q.explanation : '';
+    var ts = q && q.timestamp_seconds != null && q.timestamp_seconds !== '' ? String(q.timestamp_seconds) : '';
+    var secId = q && q.section_id != null ? q.section_id : '';
+    var answers = q && q.answers && q.answers.length
+      ? q.answers.map(function (a) { return answerRowHtml(a); }).join('')
+      : answerRowHtml({ answer_text: '', is_correct: false });
+    return (
+      '<div class="card shadow-sm mb-4 js-question-card">' +
+        '<div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">' +
+          '<span class="fw-semibold">Question</span>' +
+          '<button type="button" class="btn btn-sm btn-outline-danger js-remove-question">Delete question</button>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<input type="hidden" class="js-question-id" value="' + escapeHtml(qidVal) + '">' +
+          '<div class="mb-3">' +
+            '<label class="form-label">Question</label>' +
+            '<textarea class="form-control js-question-text" rows="3" placeholder="Enter your question">' + escapeHtml(qtext) + '</textarea>' +
+          '</div>' +
+          '<div class="mb-3">' +
+            '<label class="form-label">Explanation (shown after answer)</label>' +
+            '<textarea class="form-control js-explanation" rows="2" placeholder="Optional">' + escapeHtml(expl) + '</textarea>' +
+          '</div>' +
+          '<div class="row g-2 mb-3">' +
+            '<div class="col-md-4">' +
+              '<label class="form-label small">Jump to video (seconds)</label>' +
+              '<input type="number" class="form-control js-timestamp" min="0" step="1" placeholder="Optional" value="' + escapeHtml(ts) + '">' +
+            '</div>' +
+            '<div class="col-md-8">' +
+              '<label class="form-label small">Linked video section</label>' +
+              sectionSelectHtml(secId) +
+            '</div>' +
+          '</div>' +
+          '<p class="fw-semibold small text-muted mb-2">Answer choices</p>' +
+          '<div class="js-answers">' + answers + '</div>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary mt-1 js-add-answer">+ Add option</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderQuestions() {
+    root.innerHTML = '';
+    var qs = initial.questions || [];
+    for (var i = 0; i < qs.length; i++) {
+      root.insertAdjacentHTML('beforeend', questionCardHtml(qs[i]));
+    }
+    syncEmptyState();
+  }
+
+  function syncEmptyState() {
+    var has = root.querySelectorAll('.js-question-card').length > 0;
+    emptyBox.classList.toggle('d-none', has);
+    document.getElementById('btn-add-question-bottom').classList.toggle('d-none', !has);
+  }
+
+  function collectPayload() {
+    var questions = [];
+    var cards = root.querySelectorAll('.js-question-card');
+    cards.forEach(function (card, orderIdx) {
+      var qidRaw = card.querySelector('.js-question-id').value.trim();
+      var qid = qidRaw ? parseInt(qidRaw, 10) : null;
+      if (isNaN(qid)) qid = null;
+      var qtext = card.querySelector('.js-question-text').value.trim();
+      if (!qtext) return;
+      var secSel = card.querySelector('.js-section');
+      var sectionVal = secSel && secSel.value ? parseInt(secSel.value, 10) : null;
+      if (isNaN(sectionVal)) sectionVal = null;
+      var tsRaw = card.querySelector('.js-timestamp').value.trim();
+      var ts = tsRaw === '' ? null : parseInt(tsRaw, 10);
+      if (isNaN(ts)) ts = null;
+      var answers = [];
+      card.querySelectorAll('.js-answer-row').forEach(function (row) {
+        var cidRaw = row.querySelector('.js-answer-id').value.trim();
+        var cid = cidRaw ? parseInt(cidRaw, 10) : null;
+        if (isNaN(cid)) cid = null;
+        var atext = row.querySelector('.js-answer-text').value.trim();
+        if (!atext) return;
+        answers.push({
+          id: cid,
+          answer_text: atext,
+          is_correct: row.querySelector('.js-answer-correct').checked
+        });
+      });
+      questions.push({
+        id: qid,
+        question_text: qtext,
+        explanation: card.querySelector('.js-explanation').value.trim(),
+        timestamp_seconds: ts,
+        section_id: sectionVal,
+        order: orderIdx,
+        answers: answers
+      });
+    });
+    return {
+      title: titleEl.value.trim(),
+      description: descEl.value.trim(),
+      pass_mark: parseInt(passEl.value, 10) || 0,
+      questions: questions
+    };
+  }
+
+  root.addEventListener('click', function (e) {
+    if (e.target.closest('.js-remove-question')) {
+      e.target.closest('.js-question-card').remove();
+      syncEmptyState();
+    }
+    if (e.target.closest('.js-remove-answer')) {
+      e.target.closest('.js-answer-row').remove();
+    }
+    if (e.target.closest('.js-add-answer')) {
+      var card = e.target.closest('.js-question-card');
+      card.querySelector('.js-answers').insertAdjacentHTML('beforeend', answerRowHtml({ answer_text: '', is_correct: false }));
+    }
+  });
+
+  function addQuestion() {
+    root.insertAdjacentHTML('beforeend', questionCardHtml({ answers: [{ answer_text: '', is_correct: false }] }));
+    syncEmptyState();
+    document.getElementById('btn-add-question-bottom').classList.remove('d-none');
+  }
+
+  document.getElementById('btn-add-question-bottom').addEventListener('click', addQuestion);
+  document.getElementById('btn-add-first-question').addEventListener('click', addQuestion);
+
+  form.addEventListener('submit', function () {
+    payloadInput.value = JSON.stringify(collectPayload());
+  });
+
+  renderQuestions();
+})();
+</script>
+{% endblock %}

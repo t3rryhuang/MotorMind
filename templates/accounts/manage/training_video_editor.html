@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}{{ form_title }} — Car-Hoot{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="h4 mb-3">{{ form_title }}</h1>
+        <div id="video-form-alerts"></div>
+        <form method="post" novalidate id="training-video-form">
+          {% csrf_token %}
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+          {% endif %}
+          {% if show_course_field %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ form.course.id_for_label }}">{{ form.course.label }}</label>
+              {{ form.course }}
+              {% for err in form.course.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+            </div>
+          {% endif %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.video_url.id_for_label }}">{{ form.video_url.label }}</label>
+            {{ form.video_url }}
+            {% if form.video_url.help_text %}<div class="form-text">{{ form.video_url.help_text }}</div>{% endif %}
+            {% for err in form.video_url.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+            <div class="mt-2 d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-outline-primary btn-sm" id="btn-youtube-autofill">
+                Auto-fill title and transcript
+              </button>
+            </div>
+            <div class="mt-2 d-none" id="thumb-preview-wrap">
+              <span class="small text-muted d-block mb-1">Thumbnail preview (from YouTube)</span>
+              <img src="" alt="" class="img-thumbnail border" id="thumb-preview" style="max-width: 200px;">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.title.id_for_label }}">{{ form.title.label }}</label>
+            {{ form.title }}
+            {% for err in form.title.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+            <div class="mt-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ai-description">
+                AI write description
+              </button>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+            {{ form.description }}
+            {% for err in form.description.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.youtube_description.id_for_label }}">{{ form.youtube_description.label }}</label>
+            {{ form.youtube_description }}
+            {% if form.youtube_description.help_text %}<div class="form-text">{{ form.youtube_description.help_text }}</div>{% endif %}
+            {% for err in form.youtube_description.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.transcript.id_for_label }}">{{ form.transcript.label }}</label>
+            <p class="small text-muted mb-1" id="transcript-source-note"></p>
+            {{ form.transcript }}
+            {% if form.transcript.help_text %}<div class="form-text">{{ form.transcript.help_text }}</div>{% endif %}
+            {% for err in form.transcript.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+          </div>
+          {{ form.thumbnail_url }}
+          {{ form.transcript_source }}
+          {% for err in form.thumbnail_url.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+          {% for err in form.transcript_source.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+          <div class="d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a class="btn btn-outline-secondary" href="{% if cancel_url %}{{ cancel_url }}{% else %}{% url 'accounts:admin_panel' %}{% endif %}">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var alertsEl = document.getElementById('video-form-alerts');
+  var form = document.getElementById('training-video-form');
+  if (!form) return;
+
+  function getCookie(name) {
+    var cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      var cookies = document.cookie.split(';');
+      for (var i = 0; i < cookies.length; i++) {
+        var cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+
+  function getCsrfToken() {
+    var fromInput = form.querySelector('[name=csrfmiddlewaretoken]');
+    if (fromInput && fromInput.value) return fromInput.value;
+    return getCookie('csrftoken') || '';
+  }
+
+  function parseJsonResponse(response, bodyText) {
+    try {
+      return bodyText ? JSON.parse(bodyText) : {};
+    } catch (e) {
+      return {
+        success: false,
+        error: 'Server returned non-JSON (HTTP ' + response.status + '). ' + (bodyText || '').slice(0, 180),
+      };
+    }
+  }
+
+  function clearAlerts() {
+    alertsEl.innerHTML = '';
+  }
+
+  function showAlert(kind, html) {
+    var d = document.createElement('div');
+    d.className = 'alert alert-' + kind + ' alert-dismissible fade show';
+    d.setAttribute('role', 'alert');
+    d.innerHTML = html + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    alertsEl.appendChild(d);
+  }
+
+  function field(idPart) {
+    return document.getElementById('id_' + idPart);
+  }
+
+  var urlAutofill = "{% url 'accounts:video_youtube_autofill' %}";
+  var urlAi = "{% url 'accounts:video_ai_description' %}";
+
+  document.getElementById('btn-youtube-autofill').addEventListener('click', function () {
+    var btn = this;
+    var videoUrlEl = field('video_url');
+    if (!videoUrlEl || !videoUrlEl.value.trim()) {
+      clearAlerts();
+      showAlert('warning', 'Enter a video URL first.');
+      return;
+    }
+    clearAlerts();
+    btn.disabled = true;
+    fetch(urlAutofill, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken()
+      },
+      body: JSON.stringify({ video_url: videoUrlEl.value.trim() })
+    }).then(function (r) {
+      return r.text().then(function (text) {
+        return { ok: r.ok, status: r.status, data: parseJsonResponse(r, text) };
+      });
+    })
+      .then(function (res) {
+        btn.disabled = false;
+        var data = res.data;
+        if (!res.ok || !data.success) {
+          showAlert('danger', (data && data.error) ? data.error : ('Auto-fill failed (HTTP ' + res.status + ').'));
+          return;
+        }
+        if (field('title')) field('title').value = data.title != null ? data.title : '';
+        if (field('youtube_description')) {
+          field('youtube_description').value = data.youtube_description != null ? data.youtube_description : '';
+        }
+        if (field('transcript')) field('transcript').value = data.transcript != null ? data.transcript : '';
+        if (field('thumbnail_url')) field('thumbnail_url').value = data.thumbnail_url || '';
+        if (field('transcript_source')) field('transcript_source').value = data.transcript_source_code || '';
+        var note = document.getElementById('transcript-source-note');
+        if (note) {
+          if (data.transcript_source) {
+            note.textContent = 'Transcript source: ' + data.transcript_source + ' (from YouTube captions, not AI).';
+          } else {
+            note.textContent = '';
+          }
+        }
+        var wrap = document.getElementById('thumb-preview-wrap');
+        var img = document.getElementById('thumb-preview');
+        if (data.thumbnail_url && img && wrap) {
+          img.src = data.thumbnail_url;
+          wrap.classList.remove('d-none');
+        } else if (wrap) {
+          wrap.classList.add('d-none');
+        }
+        (data.warnings || []).forEach(function (w) {
+          showAlert('warning', w);
+        });
+        showAlert('success', 'Auto-fill finished. Review fields before saving.');
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        var extra = err && err.message ? ' ' + err.message : '';
+        showAlert('danger', 'Network error while contacting the server.' + extra);
+      });
+  });
+
+  document.getElementById('btn-ai-description').addEventListener('click', function () {
+    var btn = this;
+    clearAlerts();
+    btn.disabled = true;
+    fetch(urlAi, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken()
+      },
+      body: JSON.stringify({
+        title: (field('title') && field('title').value) || '',
+        youtube_description: (field('youtube_description') && field('youtube_description').value) || '',
+        transcript: (field('transcript') && field('transcript').value) || ''
+      })
+    }).then(function (r) {
+      return r.text().then(function (text) {
+        return { ok: r.ok, status: r.status, data: parseJsonResponse(r, text) };
+      });
+    })
+      .then(function (res) {
+        btn.disabled = false;
+        var data = res.data;
+        if (!data.success) {
+          showAlert('warning', data.error || 'AI description could not be generated.');
+          return;
+        }
+        if (field('description')) field('description').value = data.description || '';
+        showAlert('success', 'Description updated. Review before saving.');
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        var extra = err && err.message ? ' ' + err.message : '';
+        showAlert('danger', 'Network error while contacting the server.' + extra);
+      });
+  });
+})();
+</script>
+{% endblock %}

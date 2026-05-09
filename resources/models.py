@@ -45,6 +45,11 @@ class Resource(models.Model):
     year = models.PositiveIntegerField(null=True, blank=True)
     number_of_pages = models.PositiveIntegerField(null=True, blank=True)
     isbn = models.CharField(max_length=20, blank=True, db_index=True)
+    cover_image_url = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Cached book cover URL (e.g. Open Library), keyed by ISBN.",
+    )
     metadata_lookup_status = models.CharField(
         max_length=20,
         choices=MetadataLookupStatus.choices,

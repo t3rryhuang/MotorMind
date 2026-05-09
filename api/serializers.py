@@ -27,6 +27,9 @@ class TrainingVideoListSerializer(serializers.ModelSerializer):
             "description",
             "video_url",
             "transcript",
+            "thumbnail_url",
+            "transcript_source",
+            "youtube_description",
             "created_at",
         )
 
@@ -42,6 +45,9 @@ class TrainingVideoDetailSerializer(serializers.ModelSerializer):
             "description",
             "video_url",
             "transcript",
+            "thumbnail_url",
+            "transcript_source",
+            "youtube_description",
             "created_at",
             "sections",
         )

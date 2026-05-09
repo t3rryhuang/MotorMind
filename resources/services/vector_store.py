@@ -137,6 +137,55 @@ def add_chunks(resource, chunks: list[dict]) -> list[str]:
     return ids
 
 
+def refresh_resource_chunk_course_metadata(resource, collection_name: str | None = None) -> int:
+    """
+    Rewrite course_* fields on existing Chroma rows for this resource.
+
+    Used when `Resource.courses` changes so course-scoped search metadata stays
+    correct **without** re-extracting, re-chunking, or re-embedding the PDF.
+    """
+    from resources.models import Resource
+
+    if not isinstance(resource, Resource):
+        raise TypeError("resource must be a Resource instance")
+    if not _chroma_available():
+        logger.warning("Chroma unavailable; skipping course metadata refresh for resource_id=%s", resource.id)
+        return 0
+
+    resource = Resource.objects.prefetch_related("courses").get(pk=resource.pk)
+    if resource.status != Resource.Status.INGESTED or int(resource.chunk_count or 0) < 1:
+        return 0
+
+    course_ids, course_titles, course_ids_csv, course_titles_csv = _course_metadata(resource)
+    collection = get_collection(collection_name or resource.vector_collection or None)
+    try:
+        existing = collection.get(
+            where={"resource_id": int(resource.id)},
+            include=["metadatas"],
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Chroma get for metadata refresh failed: %s", exc)
+        return 0
+
+    id_list = existing.get("ids") or []
+    old_metas = existing.get("metadatas") or []
+    if not id_list:
+        return 0
+
+    new_metas: list[dict[str, Any]] = []
+    for old in old_metas:
+        m = dict(old or {})
+        m["course_ids_json"] = json.dumps(course_ids)
+        m["course_titles_json"] = json.dumps(course_titles)
+        m["course_ids_csv"] = course_ids_csv
+        m["course_titles_csv"] = course_titles_csv
+        new_metas.append(_sanitize_metadata(m))
+
+    collection.update(ids=id_list, metadatas=new_metas)
+    logger.info("Chroma course metadata refresh: resource_id=%s chunks=%s", resource.id, len(id_list))
+    return len(id_list)
+
+
 def delete_resource_vectors(resource_id: int, collection_name: str | None = None) -> int:
     """Delete all vectors whose metadata resource_id matches. Returns number of ids deleted."""
     collection = get_collection(collection_name)

@@ -6,10 +6,40 @@ from .views import AdminPanelView, CarHootLoginView, CarHootLogoutView, Dashboar
 app_name = "accounts"
 
 urlpatterns = [
+    path(
+        "admin-panel/courses/<int:course_id>/quizzes/<int:quiz_id>/edit/",
+        manage_views.course_quiz_edit,
+        name="course_quiz_edit",
+    ),
+    path(
+        "admin-panel/courses/<int:course_id>/quizzes/<int:quiz_id>/delete/",
+        manage_views.course_quiz_delete,
+        name="course_quiz_delete",
+    ),
+    path(
+        "admin-panel/courses/<int:course_id>/videos/<int:video_id>/edit/",
+        manage_views.NestedTrainingVideoUpdateView.as_view(),
+        name="course_video_edit",
+    ),
+    path(
+        "admin-panel/courses/<int:course_id>/videos/<int:video_id>/delete/",
+        manage_views.course_training_video_delete,
+        name="course_video_delete",
+    ),
     path("login/", CarHootLoginView.as_view(), name="login"),
     path("logout/", CarHootLogoutView.as_view(), name="logout"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("admin-panel/", AdminPanelView.as_view(), name="admin_panel"),
+    path(
+        "admin-panel/videos/youtube-autofill/",
+        manage_views.video_youtube_autofill_api,
+        name="video_youtube_autofill",
+    ),
+    path(
+        "admin-panel/videos/ai-description/",
+        manage_views.video_ai_description_api,
+        name="video_ai_description",
+    ),
     path(
         "admin-panel/manage/course/add/",
         manage_views.CourseCreateView.as_view(),

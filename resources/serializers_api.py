@@ -44,6 +44,7 @@ class ResourceDetailSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "isbn",
+            "cover_image_url",
             "resource_type",
             "source_title",
             "author",

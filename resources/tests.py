@@ -1,10 +1,13 @@
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase
 
 from resources.models import Resource
+from resources.services.book_cover import ensure_book_cover_url, openlibrary_cover_url
 from resources.services.book_metadata import lookup_book_metadata_by_isbn
 from resources.services.resource_upload import build_resource_from_minimal_upload
 
@@ -158,3 +161,69 @@ class BuildResourceMetadataTests(TestCase):
                 explicit_resource_type=Resource.ResourceType.BOOK,
                 user=self.user,
             )
+
+
+class BookCoverTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.resource = Resource.objects.create(
+            title="Test Book",
+            resource_type=Resource.ResourceType.BOOK,
+            uploaded_file=SimpleUploadedFile("book.pdf", b"%PDF-1.4"),
+            isbn="9780080969459",
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_returns_stored_url_without_http(self):
+        url = "https://covers.openlibrary.org/b/isbn/9780080969459-L.jpg"
+        Resource.objects.filter(pk=self.resource.pk).update(cover_image_url=url)
+        self.resource.refresh_from_db()
+        with patch("resources.services.book_cover.requests.head") as mock_head:
+            out = ensure_book_cover_url(self.resource)
+        self.assertEqual(out, url)
+        mock_head.assert_not_called()
+
+    @patch("resources.services.book_cover.requests.head")
+    def test_probe_success_persists_and_caches(self, mock_head):
+        r = MagicMock()
+        r.status_code = 200
+        r.headers = {"content-type": "image/jpeg"}
+        mock_head.return_value = r
+
+        out = ensure_book_cover_url(self.resource)
+        expected = openlibrary_cover_url("9780080969459")
+        self.assertEqual(out, expected)
+        self.resource.refresh_from_db()
+        self.assertEqual(self.resource.cover_image_url, expected)
+        mock_head.assert_called_once()
+
+        mock_head.reset_mock()
+        self.resource.cover_image_url = ""
+        self.resource.save(update_fields=["cover_image_url"])
+        out2 = ensure_book_cover_url(self.resource)
+        self.assertEqual(out2, expected)
+        mock_head.assert_not_called()
+
+    @patch("resources.services.book_cover.requests.head")
+    def test_probe_miss_caches_negative(self, mock_head):
+        r = MagicMock()
+        r.status_code = 404
+        r.headers = {"content-type": "text/html"}
+        mock_head.return_value = r
+
+        out = ensure_book_cover_url(self.resource)
+        self.assertEqual(out, "")
+        self.resource.refresh_from_db()
+        self.assertEqual(self.resource.cover_image_url, "")
+
+        mock_head.reset_mock()
+        out2 = ensure_book_cover_url(self.resource)
+        self.assertEqual(out2, "")
+        mock_head.assert_not_called()
+
+    def test_empty_isbn_returns_empty(self):
+        Resource.objects.filter(pk=self.resource.pk).update(isbn="")
+        self.resource.refresh_from_db()
+        self.assertEqual(ensure_book_cover_url(self.resource), "")

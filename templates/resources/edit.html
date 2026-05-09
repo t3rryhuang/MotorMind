@@ -15,6 +15,6 @@
   <a class="btn btn-outline-secondary" href="{% url 'resources:detail' object.pk %}">Cancel</a>
 </form>
 <p class="small text-muted mt-3">
-  Changing linked courses triggers a <strong>re-ingest</strong> so Chroma metadata (<code>course_ids_csv</code>) stays aligned.
+  Changing linked courses updates Chroma chunk metadata (<code>course_ids_csv</code>, etc.) in place — the PDF is <strong>not</strong> re-processed. Use <strong>Re-ingest</strong> on the detail page only if you need to rebuild vectors from the file.
 </p>
 {% endblock %}

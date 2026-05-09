@@ -48,18 +48,34 @@
           <ul class="list-group list-group-flush small">
             {% for v in videos %}
               <li class="list-group-item">
-                <div class="fw-semibold">{{ v.title }}</div>
-                <div class="text-muted">{{ v.video_url|truncatechars:56 }}</div>
-                {% if v.sections.all %}
-                  <ul class="mb-0 mt-1">
-                    {% for s in v.sections.all %}
-                      <li>{{ s.title }} ({{ s.start_seconds }}s–{{ s.end_seconds }}s)</li>
-                    {% endfor %}
-                  </ul>
-                {% else %}
-                  <p class="text-muted mb-0 mt-1">No sections yet.</p>
-                {% endif %}
-                <a class="btn btn-sm btn-outline-primary mt-2" href="{% url 'accounts:manage_course_section_add' course.pk %}?video={{ v.pk }}">Add section</a>
+                <div class="d-flex gap-3 align-items-start">
+                  {% if v.youtube_thumbnail_url %}
+                    <img src="{{ v.youtube_thumbnail_url }}" alt="{{ v.title }} thumbnail" class="img-thumbnail flex-shrink-0" style="width: 160px; max-width: 160px;">
+                  {% else %}
+                    <div class="flex-shrink-0 border rounded bg-light text-muted small d-flex align-items-center justify-content-center px-2 text-center" style="width: 160px; min-height: 90px;">No thumbnail</div>
+                  {% endif %}
+                  <div class="flex-grow-1 min-w-0">
+                    <div class="fw-semibold">{{ v.title }}</div>
+                    <div class="text-muted text-break small">{{ v.video_url }}</div>
+                    {% if v.sections.all %}
+                      <ul class="mb-0 mt-1">
+                        {% for s in v.sections.all %}
+                          <li>{{ s.title }} ({{ s.start_seconds }}s–{{ s.end_seconds }}s)</li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      <p class="text-muted mb-0 mt-1">No sections yet.</p>
+                    {% endif %}
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                      <a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:manage_course_section_add' course.pk %}?video={{ v.pk }}">Add section</a>
+                      <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounts:course_video_edit' course.pk v.pk %}">Edit video</a>
+                      <form method="post" action="{% url 'accounts:course_video_delete' course.pk v.pk %}" class="d-inline" onsubmit="return confirm('Delete this video and all its sections?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Remove video</button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
               </li>
             {% endfor %}
           </ul>
@@ -83,19 +99,14 @@
               <li class="list-group-item">
                 <div class="fw-semibold">{{ q.title }}</div>
                 <p class="text-muted mb-1">Pass mark: {{ q.pass_mark }}%</p>
-                {% if q.questions.all %}
-                  <p class="mb-1">Questions:</p>
-                  <ul class="mb-2">
-                    {% for qu in q.questions.all %}
-                      <li class="text-break">{{ qu.question_text|truncatechars:80 }}</li>
-                    {% endfor %}
-                  </ul>
-                {% else %}
-                  <p class="text-muted small">No questions yet.</p>
-                {% endif %}
-                <div class="d-flex flex-wrap gap-1">
-                  <a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:manage_course_question_add' course.pk %}?quiz={{ q.pk }}">Add question</a>
-                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounts:manage_course_choice_add' course.pk %}">Add answer choice</a>
+                <p class="text-muted small mb-2">Questions: {{ q.num_questions }}</p>
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                  <a class="btn btn-sm btn-primary" href="{% url 'accounts:course_quiz_edit' course.pk q.pk %}">Edit quiz</a>
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'quizzes:quiz_take' q.pk %}" target="_blank" rel="noopener">Preview</a>
+                  <form method="post" action="{% url 'accounts:course_quiz_delete' course.pk q.pk %}" class="d-inline" onsubmit="return confirm('Delete this quiz and all attempts?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove quiz</button>
+                  </form>
                 </div>
               </li>
             {% endfor %}

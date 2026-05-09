@@ -74,6 +74,28 @@
     </div>
   </div>
   <div class="col-lg-5">
+    {% if book_cover_url %}
+    <div class="card shadow-sm mb-3 text-center">
+      <div class="card-body py-3">
+        <img
+          src="{{ book_cover_url }}"
+          alt="Cover: {{ resource.title }}"
+          class="img-fluid rounded border"
+          style="max-height: 280px; object-fit: contain;"
+          loading="lazy"
+          width="200"
+          height="280"
+        >
+        <p class="small text-muted mb-0 mt-2">Cover via Open Library (ISBN).</p>
+      </div>
+    </div>
+    {% elif book_cover_lookup_eligible %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body py-2">
+        <p class="small text-muted mb-0">No cover image found for this ISBN on Open Library.</p>
+      </div>
+    </div>
+    {% endif %}
     <div class="card shadow-sm mb-3">
       <div class="card-header fw-semibold">Linked courses</div>
       <div class="card-body">

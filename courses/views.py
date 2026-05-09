@@ -1,9 +1,8 @@
-from urllib.parse import parse_qs, urlparse
-
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import DetailView, ListView, TemplateView
 
 from .models import Course, TrainingVideo
+from .utils import extract_youtube_video_id
 
 
 class LandingView(TemplateView):
@@ -42,24 +41,6 @@ def parse_video_start_seconds(request_get):
         return 0
 
 
-def youtube_video_id(url):
-    """Extract YouTube video id for embed URLs (simple heuristic)."""
-    try:
-        p = urlparse(url)
-        host = (p.netloc or "").lower()
-        if "youtu.be" in host:
-            return (p.path or "").strip("/").split("/")[0] or None
-        if "youtube.com" in host:
-            if p.path.startswith("/embed/"):
-                return p.path.split("/")[2].split("?")[0]
-            qs = parse_qs(p.query)
-            if "v" in qs and qs["v"]:
-                return qs["v"][0]
-    except (IndexError, ValueError):
-        return None
-    return None
-
-
 class VideoDetailView(LoginRequiredMixin, DetailView):
     model = TrainingVideo
     template_name = "courses/video_detail.html"
@@ -78,5 +59,5 @@ class VideoDetailView(LoginRequiredMixin, DetailView):
         ctx = super().get_context_data(**kwargs)
         start = parse_video_start_seconds(self.request.GET)
         ctx["start_seconds"] = start
-        ctx["youtube_id"] = youtube_video_id(self.object.video_url)
+        ctx["youtube_id"] = extract_youtube_video_id(self.object.video_url or "") or None
         return ctx

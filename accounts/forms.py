@@ -28,13 +28,60 @@ class CourseForm(forms.ModelForm):
 class TrainingVideoForm(forms.ModelForm):
     class Meta:
         model = TrainingVideo
-        fields = ("course", "title", "description", "video_url", "transcript")
+        fields = (
+            "course",
+            "video_url",
+            "title",
+            "description",
+            "youtube_description",
+            "transcript",
+            "thumbnail_url",
+            "transcript_source",
+        )
         widgets = {
             "course": forms.Select(attrs={"class": "form-select"}),
-            "title": forms.TextInput(attrs={"class": "form-control"}),
-            "description": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
             "video_url": forms.URLInput(attrs={"class": "form-control"}),
-            "transcript": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+            "youtube_description": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "title": forms.TextInput(attrs={"class": "form-control"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "transcript": forms.Textarea(attrs={"class": "form-control", "rows": 6}),
+            "thumbnail_url": forms.HiddenInput(),
+            "transcript_source": forms.HiddenInput(),
+        }
+        help_texts = {
+            "video_url": "Paste a YouTube URL first, then use Auto-fill for title, thumbnail, and captions.",
+            "youtube_description": "Optional. Used for “AI write description”; oEmbed does not include the full YouTube description yet.",
+            "transcript": "Filled from YouTube captions when you use Auto-fill (not AI-generated).",
+        }
+
+
+class TrainingVideoEditForm(forms.ModelForm):
+    """Edit video metadata without changing owning course (set by URL)."""
+
+    class Meta:
+        model = TrainingVideo
+        fields = (
+            "video_url",
+            "title",
+            "description",
+            "youtube_description",
+            "transcript",
+            "thumbnail_url",
+            "transcript_source",
+        )
+        widgets = {
+            "video_url": forms.URLInput(attrs={"class": "form-control"}),
+            "youtube_description": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "title": forms.TextInput(attrs={"class": "form-control"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "transcript": forms.Textarea(attrs={"class": "form-control", "rows": 6}),
+            "thumbnail_url": forms.HiddenInput(),
+            "transcript_source": forms.HiddenInput(),
+        }
+        help_texts = {
+            "video_url": "Paste a YouTube URL first, then use Auto-fill for title, thumbnail, and captions.",
+            "youtube_description": "Optional. Used for “AI write description”; oEmbed does not include the full YouTube description yet.",
+            "transcript": "Filled from YouTube captions when you use Auto-fill (not AI-generated).",
         }
 
 

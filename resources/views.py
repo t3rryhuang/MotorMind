@@ -19,6 +19,8 @@ from accounts.mixins import TeacherRequiredMixin
 from .forms import MinimalResourceUploadForm, ResourceEditForm
 from .models import Resource, ResourceIngestionJob, ResourceRetrievalLog
 from .serializers_api import ResourceDetailSerializer
+from .services.book_cover import ensure_book_cover_url
+from .services.isbn import clean_isbn, normalise_isbn
 from .services.resource_upload import apply_metadata_lookup_to_resource, build_resource_from_minimal_upload
 from .services.ingestion import ingest_resource
 from .services.search_format import format_api_results
@@ -137,6 +139,18 @@ class ResourceDetailView(TeacherRequiredMixin, DetailView):
     def get_queryset(self):
         return Resource.objects.prefetch_related("courses", "ingestion_jobs")
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        resource: Resource = self.object
+        ctx["book_cover_url"] = ""
+        ctx["book_cover_lookup_eligible"] = False
+        if resource.resource_type == Resource.ResourceType.BOOK:
+            ctx["book_cover_lookup_eligible"] = bool(
+                normalise_isbn(clean_isbn(resource.isbn or ""))
+            )
+            ctx["book_cover_url"] = ensure_book_cover_url(resource)
+        return ctx
+
 
 class ResourceEditView(TeacherRequiredMixin, UpdateView):
     model = Resource
@@ -147,21 +161,23 @@ class ResourceEditView(TeacherRequiredMixin, UpdateView):
         return Resource.objects.prefetch_related("courses")
 
     def form_valid(self, form):
+        from django.http import HttpResponseRedirect
+
         before = set(self.object.courses.values_list("id", flat=True))
-        resp = super().form_valid(form)
+        old_norm = normalise_isbn(clean_isbn(self.object.isbn or ""))
+        new_norm = normalise_isbn(clean_isbn(form.cleaned_data.get("isbn") or ""))
+        self.object = form.save(commit=False)
+        if old_norm != new_norm:
+            self.object.cover_image_url = ""
+        self.object.save()
+        form.save_m2m()
         after = set(self.object.courses.values_list("id", flat=True))
-        if before != after and self.object.uploaded_file:
-            messages.info(self.request, "Course links changed — re-ingesting to refresh vector metadata.")
-            job = ResourceIngestionJob.objects.create(
-                resource=self.object,
-                status=ResourceIngestionJob.Status.QUEUED,
-                message="Re-ingest after course edits",
+        if before != after:
+            messages.success(
+                self.request,
+                "Course links saved. Search index metadata was updated in place (no full re-ingestion).",
             )
-            try:
-                ingest_resource(self.object.id, job.id)
-            except Exception as exc:
-                messages.error(self.request, f"Re-ingestion failed: {exc}")
-        return resp
+        return HttpResponseRedirect(self.get_success_url())
 
     def get_success_url(self):
         return reverse("resources:detail", kwargs={"pk": self.object.pk})
@@ -215,8 +231,12 @@ class ResourceMetadataLookupRetryView(TeacherRequiredMixin, View):
         if not (resource.isbn or "").strip():
             messages.error(request, "This resource has no ISBN. Add one under Edit metadata, then retry.")
             return redirect("resources:detail", pk=resource.pk)
+        old_norm = normalise_isbn(clean_isbn(resource.isbn or ""))
         apply_metadata_lookup_to_resource(resource)
         resource.save()
+        new_norm = normalise_isbn(clean_isbn(resource.isbn or ""))
+        if old_norm != new_norm:
+            Resource.objects.filter(pk=resource.pk).update(cover_image_url="")
         if resource.metadata_lookup_status == Resource.MetadataLookupStatus.SUCCESS:
             messages.success(request, "Metadata lookup completed successfully.")
         else:

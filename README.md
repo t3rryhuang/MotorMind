@@ -16,13 +16,34 @@ cd CarHoot
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env        # optional; edit SECRET_KEY for anything beyond local dev
+cp .env.example .env        # optional; set SECRET_KEY, and GOOGLE_API_KEY if you use “AI write description”
 python3 manage.py migrate
+python3 manage.py check_trainingvideo_schema   # optional: verify TrainingVideo columns exist
 python3 manage.py seed_demo
 python3 manage.py runserver
 ```
 
 Open http://127.0.0.1:8000/
+
+### YouTube auto-fill (training videos)
+
+On **Add / Edit training video**, teachers paste a YouTube URL first, then use **Auto-fill title and transcript**:
+
+- **Title and thumbnail** come from YouTube **oEmbed** (`https://www.youtube.com/oembed`) — **no YouTube Data API key**.
+- **Transcript** comes from **`youtube-transcript-api`**, preferring **manually created English** captions, then **auto-generated English** captions. Sources are labeled in the UI as **YouTube captions** or **Auto-generated YouTube captions** (not AI transcription).
+- If no captions exist, the transcript field is left empty and the UI shows a clear warning: add a transcript manually or configure **audio transcription** later (not implemented yet; **`yt-dlp`** is listed in requirements for future metadata / pipeline work — see TODO in `courses/services/youtube.py`).
+- **AI write description** calls Google **Generative AI** when **`GOOGLE_API_KEY`** is set in `.env` (from [Google AI Studio](https://aistudio.google.com/app/apikey)). Model name defaults to **`GOOGLE_MODEL_NAME=gemma-3-27b-it`**; override if your project uses another supported model. If the key is missing, the UI shows a clear “not configured” message instead of crashing.
+- **Never commit API keys.** Keep secrets in `.env` (gitignored). If a key was ever exposed in chat or a ticket, **rotate it** in Google Cloud / AI Studio.
+
+After pulling changes that touch `courses.models.TrainingVideo`, always run:
+
+```bash
+python manage.py makemigrations   # if you changed models locally
+python manage.py migrate
+python manage.py check_trainingvideo_schema
+```
+
+If you see `OperationalError: no such column ... thumbnail_url`, the database is behind the models — `migrate` (and migration `0003_repair_trainingvideo_columns` if history is inconsistent) brings SQLite in sync **without** deleting `db.sqlite3`.
 
 ### Demo logins (from `seed_demo`)
 
@@ -58,6 +79,8 @@ Django admin: http://127.0.0.1:8000/admin/ — create a superuser with `python3 
 | `/admin-panel/` | Teacher-only custom panel (your courses, resources; `/admin-panel/manage/course/<id>/` edits a course) |
 | `/admin-panel/resources/` | **Teacher-only** resource dashboard (upload + table) |
 | `/admin-panel/resources/test/` | **Teacher-only** retrieval test UI |
+| `/admin-panel/videos/youtube-autofill/` | **Teacher-only** POST JSON — oEmbed + captions for the video form |
+| `/admin-panel/videos/ai-description/` | **Teacher-only** POST JSON — optional Gemini/Gemma description |
 
 ## Resource library / vector database
 
@@ -113,7 +136,7 @@ curl -u teacher:teacher123 -X POST http://127.0.0.1:8000/api/resources/upload/ \
 
 `Resource.courses` is a **ManyToManyField** to `courses.Course` (no `ForeignKey` from `Resource` → `Course`). A resource can belong to **zero, one, or many** courses, and a course can have many resources.
 
-When course associations change, the app **re-ingests** the same uploaded file so Chroma metadata (`course_ids_csv`, `course_titles_csv`, JSON mirrors) stays consistent (Chroma metadata updates in-place are awkward; re-ingest is simple and idempotent).
+When course associations change, Car-Hoot **updates Chroma metadata only** (`course_ids_csv`, `course_titles_csv`, JSON mirrors) on existing chunk vectors — **no** full re-extraction, re-chunking, or re-embedding. Use **Re-ingest** on the resource detail page when you actually need to rebuild vectors from the file.
 
 ### Embeddings (local)
 
