@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Teacher admin panel — Car-Hoot{% endblock %}
+{% block main_classes %}container-fluid px-3 px-sm-4 px-xl-5 pb-5{% endblock %}
 {% block content %}
 <h1 class="h3 mb-3">Teacher admin panel</h1>
 <p class="text-muted">
@@ -8,7 +9,7 @@
 </p>
 
 <div class="row g-3">
-  <div class="col-md-6 col-xl-4">
+  <div class="col-12 col-lg-6">
     <div class="card shadow-sm h-100 border-primary">
       <div class="card-header fw-semibold">Resource library / vector search</div>
       <div class="card-body">
@@ -21,7 +22,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-6 col-xl-4">
+  <div class="col-12 col-lg-6">
     <div class="card shadow-sm h-100 border-primary">
       <div class="card-header fw-semibold">Courses</div>
       <div class="card-body">
@@ -46,7 +47,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-6 col-xl-8">
+  <div class="col-12">
     <div class="card shadow-sm">
       <div class="card-header fw-semibold">Student progress</div>
       <div class="card-body">

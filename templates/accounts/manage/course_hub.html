@@ -28,6 +28,19 @@
       {% for field in form %}
         <div class="mb-3">
           <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {% if field.name == "description" %}
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-generate-course-description"
+                {% if not course_description_ai_ready %}disabled{% endif %}
+                data-ai-url="{% url 'accounts:course_ai_description' course.pk %}"
+                {% if course_description_ai_ready %}
+                  title="Uses training video transcripts and the latest top-5 reading chunks when available."
+                {% else %}
+                  title="Add transcripts to your videos and/or run Find top 5 chunks in the Reading section below."
+                {% endif %}>Generate description</button>
+              <span class="small text-muted" id="course-description-ai-status" aria-live="polite"></span>
+            </div>
+          {% endif %}
           {{ field }}
           {% for err in field.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
         </div>
@@ -37,7 +50,7 @@
   </div>
 </div>
 
-<div class="row g-3">
+<div class="row g-3 mb-4">
   <div class="col-lg-6">
     <div class="card shadow-sm h-100">
       <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -360,6 +373,56 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+(function () {
+  var btn = document.getElementById('btn-generate-course-description');
+  var descTa = document.getElementById('id_description');
+  var statusEl = document.getElementById('course-description-ai-status');
+  if (!btn || !descTa) return;
+  function getCookie(name) {
+    var v = null;
+    if (document.cookie) {
+      document.cookie.split(';').forEach(function (c) {
+        var p = c.trim().split('=');
+        if (p[0] === name) v = decodeURIComponent(p.slice(1).join('='));
+      });
+    }
+    return v;
+  }
+  btn.addEventListener('click', function () {
+    if (btn.disabled) return;
+    var url = btn.getAttribute('data-ai-url');
+    if (!url) return;
+    if (statusEl) statusEl.textContent = 'Generating…';
+    btn.disabled = true;
+    var form = btn.closest('form');
+    var csrf = form ? (form.querySelector('[name=csrfmiddlewaretoken]') || {}).value : '';
+    fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrf || getCookie('csrftoken') || ''
+      },
+      body: '{}'
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (res.j && res.j.success && res.j.description) {
+          descTa.value = res.j.description;
+          if (statusEl) statusEl.textContent = 'Description inserted — review and click Save course.';
+        } else {
+          if (statusEl) statusEl.textContent = (res.j && res.j.error) ? res.j.error : 'Generation failed.';
+        }
+      })
+      .catch(function () {
+        if (statusEl) statusEl.textContent = 'Network error.';
+      })
+      .finally(function () {
+        btn.disabled = false;
+      });
+  });
+})();
+</script>
 {% if study_content_enabled and reading_chunks_preview %}
 <script>
 (function () {

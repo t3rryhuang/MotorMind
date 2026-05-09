@@ -56,6 +56,11 @@ urlpatterns = [
         name="video_ai_title",
     ),
     path(
+        "admin-panel/manage/course/<int:course_id>/ai-course-description/",
+        manage_views.course_ai_description_generate,
+        name="course_ai_description",
+    ),
+    path(
         "admin-panel/manage/course/<int:course_id>/resources/attach/",
         manage_views.course_resource_attach,
         name="course_resource_attach",

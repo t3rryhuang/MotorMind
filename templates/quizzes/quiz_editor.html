@@ -12,6 +12,8 @@
 {{ quiz_initial|json_script:"quiz-initial-data" }}
 {{ section_options|json_script:"section-options-data" }}
 <input type="hidden" id="ai-suggestions-url" value="{{ ai_suggestions_url }}">
+<input type="hidden" id="quiz-editor-mode" value="{{ editor_mode }}">
+<input type="hidden" id="quiz-course-title" value="{{ course.title|default:'' }}">
 {{ quiz_ai_gate|json_script:"quiz-ai-gate-data" }}
 
 <div class="sticky-top bg-white border-bottom py-2 mb-3 shadow-sm" style="z-index: 1020;">
@@ -109,13 +111,9 @@
         </div>
         <p class="small text-danger mb-2 d-none" id="ai-quiz-error"></p>
         <div id="ai-quiz-phase-review" class="d-none">
-          <p class="small text-muted">Review and edit suggestions, remove rows you do not want, then insert into the editor (does not save until you click Save quiz).</p>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle" id="ai-suggestions-table">
-              <thead><tr><th></th><th>Question</th><th>Answers / correct</th><th>Explanation</th><th>Jump (s)</th><th>Section</th><th>Refs</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
+          <p class="small text-muted">Review and edit suggestions, remove questions you do not want, then insert into the editor (does not save until you click Save quiz).</p>
+          <div id="ai-insert-validation-alert" class="alert alert-danger d-none mb-3" role="alert"></div>
+          <div id="ai-suggestions-cards"></div>
           <div class="d-flex flex-wrap gap-2 mt-2">
             <button type="button" class="btn btn-primary btn-sm" id="ai-insert-btn">Insert into quiz</button>
             <button type="button" class="btn btn-outline-primary btn-sm" id="ai-from-review-options">Options &amp; regenerate</button>
@@ -199,7 +197,7 @@
     );
   }
 
-  function questionCardHtml(q) {
+  function questionCardHtml(q, questionNumber) {
     var qidVal = q && q.id != null && q.id > 0 ? String(q.id) : '';
     var qtext = q && q.question_text ? q.question_text : '';
     var expl = q && q.explanation ? q.explanation : '';
@@ -209,16 +207,19 @@
     var answers = q && q.answers && q.answers.length
       ? q.answers.map(function (a) { return answerRowHtml(a); }).join('')
       : answerRowHtml({ answer_text: '', is_correct: false });
+    var num = parseInt(questionNumber, 10);
+    if (isNaN(num) || num < 1) num = 1;
+    var heading = 'Question ' + num;
     return (
       '<div class="card shadow-sm mb-4 js-question-card">' +
         '<div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">' +
-          '<span class="fw-semibold">Question</span>' +
+          '<span class="fw-semibold js-question-heading">' + escapeHtml(heading) + '</span>' +
           '<button type="button" class="btn btn-sm btn-outline-danger js-remove-question">Delete question</button>' +
         '</div>' +
         '<div class="card-body">' +
           '<input type="hidden" class="js-question-id" value="' + escapeHtml(qidVal) + '">' +
           '<div class="mb-3">' +
-            '<label class="form-label">Question</label>' +
+            '<label class="form-label">Question text</label>' +
             '<textarea class="form-control js-question-text" rows="3" placeholder="Enter your question">' + escapeHtml(qtext) + '</textarea>' +
           '</div>' +
           '<div class="mb-2">' +
@@ -247,11 +248,19 @@
     );
   }
 
+  function refreshQuestionNumbers() {
+    var cards = root.querySelectorAll('.js-question-card');
+    cards.forEach(function (card, idx) {
+      var h = card.querySelector('.js-question-heading');
+      if (h) h.textContent = 'Question ' + (idx + 1);
+    });
+  }
+
   function renderQuestions() {
     root.innerHTML = '';
     var qs = initial.questions || [];
     for (var i = 0; i < qs.length; i++) {
-      root.insertAdjacentHTML('beforeend', questionCardHtml(qs[i]));
+      root.insertAdjacentHTML('beforeend', questionCardHtml(qs[i], i + 1));
     }
     syncEmptyState();
   }
@@ -315,6 +324,7 @@
     if (e.target.closest('.js-remove-question')) {
       e.target.closest('.js-question-card').remove();
       syncEmptyState();
+      refreshQuestionNumbers();
     }
     if (e.target.closest('.js-remove-answer')) {
       e.target.closest('.js-answer-row').remove();
@@ -326,8 +336,10 @@
   });
 
   function addQuestion() {
-    root.insertAdjacentHTML('beforeend', questionCardHtml({ answers: [{ answer_text: '', is_correct: false }] }));
+    var n = root.querySelectorAll('.js-question-card').length + 1;
+    root.insertAdjacentHTML('beforeend', questionCardHtml({ answers: [{ answer_text: '', is_correct: false }] }, n));
     syncEmptyState();
+    refreshQuestionNumbers();
     document.getElementById('btn-add-question-bottom').classList.remove('d-none');
   }
 
@@ -386,6 +398,13 @@
     if (phaseConfig) phaseConfig.classList.add('d-none');
     if (phaseReview) phaseReview.classList.add('d-none');
     if (phaseWorking) phaseWorking.classList.remove('d-none');
+    var cardsRoot = document.getElementById('ai-suggestions-cards');
+    if (cardsRoot) cardsRoot.innerHTML = '';
+    var valAlert = document.getElementById('ai-insert-validation-alert');
+    if (valAlert) {
+      valAlert.classList.add('d-none');
+      valAlert.innerHTML = '';
+    }
   }
 
   var aiModalEl = document.getElementById('aiQuizModal');
@@ -435,7 +454,7 @@
         setAiProgress(100, { variant: 'success', striped: false });
         setAiStatus('Done. Review and edit below, then insert into the quiz.');
         pendingAiQuestions = res.j.questions || [];
-        buildReviewTable(pendingAiQuestions);
+        renderAiSuggestionCards(pendingAiQuestions);
         if (phaseWorking) phaseWorking.classList.add('d-none');
         if (phaseConfig) phaseConfig.classList.add('d-none');
         if (phaseReview) phaseReview.classList.remove('d-none');
@@ -517,67 +536,214 @@
     });
   }
 
-  function buildReviewTable(qs) {
-    var tb = document.querySelector('#ai-suggestions-table tbody');
-    tb.innerHTML = '';
-    qs.forEach(function (q, idx) {
-      var refs = (q.source_refs || []).join(', ');
-      var answersJson = '';
-      try { answersJson = JSON.stringify(q.answers || [], null, 0); } catch (e) { answersJson = '[]'; }
-      var tsRaw = q.timestamp_seconds;
-      var tsStr = '';
-      if (tsRaw != null && tsRaw !== '' && !isNaN(Number(tsRaw))) {
-        tsStr = String(Math.max(0, parseInt(tsRaw, 10)));
+  var aiCardUidSeq = 0;
+
+  function nextAiCardCorrectGroupName() {
+    aiCardUidSeq += 1;
+    return 'ai-correct-' + aiCardUidSeq;
+  }
+
+  function normalizeAnswersForAiModal(answers) {
+    var arr = [];
+    if (Array.isArray(answers)) {
+      for (var i = 0; i < answers.length; i++) {
+        var a = answers[i] || {};
+        arr.push({
+          answer_text: a.answer_text != null ? String(a.answer_text) : '',
+          is_correct: !!a.is_correct
+        });
       }
-      var secId = q.section_id != null && q.section_id !== '' ? String(q.section_id) : '';
-      var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td><button type="button" class="btn btn-sm btn-outline-danger js-ai-del-row">Remove</button></td>' +
-        '<td><textarea class="form-control form-control-sm js-ai-q" rows="3">' + escapeHtml(q.question_text || '') + '</textarea></td>' +
-        '<td><textarea class="form-control form-control-sm js-ai-a-json" rows="6" title="JSON array of {answer_text, is_correct}">' + escapeHtml(answersJson) + '</textarea></td>' +
-        '<td><textarea class="form-control form-control-sm js-ai-e" rows="3">' + escapeHtml(q.explanation || '') + '</textarea></td>' +
-        '<td><input type="number" class="form-control form-control-sm js-ai-ts" min="0" step="1" placeholder="—" style="max-width: 6rem;" value="' + escapeHtml(tsStr) + '"></td>' +
-        '<td>' + sectionSelectAiHtml(secId) + '</td>' +
-        '<td><input type="text" class="form-control form-control-sm js-ai-r" value="' + escapeHtml(refs) + '"></td>';
-      tr.dataset.idx = String(idx);
-      tb.appendChild(tr);
+    }
+    var firstCorrect = -1;
+    for (var j = 0; j < arr.length; j++) {
+      if (arr[j].is_correct) {
+        firstCorrect = j;
+        break;
+      }
+    }
+    if (firstCorrect < 0) {
+      if (arr.length) {
+        arr[0].is_correct = true;
+        firstCorrect = 0;
+      } else {
+        return [
+          { answer_text: '', is_correct: true },
+          { answer_text: '', is_correct: false }
+        ];
+      }
+    }
+    for (var k = 0; k < arr.length; k++) {
+      arr[k].is_correct = (k === firstCorrect);
+    }
+    while (arr.length < 2) {
+      arr.push({ answer_text: '', is_correct: false });
+    }
+    return arr;
+  }
+
+  function aiModalAnswerRowHtml(correctGroupName, answerText, isCorrect) {
+    var chk = isCorrect ? ' checked' : '';
+    return (
+      '<div class="d-flex align-items-center gap-2 mb-2 js-ai-answer-row">' +
+        '<div class="flex-shrink-0 pt-1" style="width: 2rem;" title="Correct">' +
+          '<input type="radio" class="form-check-input js-ai-answer-correct" name="' +
+          escapeHtml(correctGroupName) + '"' + chk + '>' +
+        '</div>' +
+        '<div class="flex-grow-1 min-w-0">' +
+          '<input type="text" class="form-control form-control-sm js-ai-answer-text" value="' +
+          escapeHtml(answerText) + '" placeholder="Answer text">' +
+        '</div>' +
+        '<button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0 js-ai-remove-answer">Remove</button>' +
+      '</div>'
+    );
+  }
+
+  function aiSuggestionCardHtml(q, correctGroupName, suggestionNum) {
+    var sn = parseInt(suggestionNum, 10);
+    if (isNaN(sn) || sn < 1) sn = 1;
+    var refs = (q.source_refs && q.source_refs.length) ? q.source_refs.join(', ') : '';
+    var tsRaw = q.timestamp_seconds;
+    var tsStr = '';
+    if (tsRaw != null && tsRaw !== '' && !isNaN(Number(tsRaw))) {
+      tsStr = String(Math.max(0, parseInt(tsRaw, 10)));
+    }
+    var secId = q.section_id != null && q.section_id !== '' ? String(q.section_id) : '';
+    var normAns = normalizeAnswersForAiModal(q.answers);
+    var ansRows = '';
+    for (var i = 0; i < normAns.length; i++) {
+      ansRows += aiModalAnswerRowHtml(correctGroupName, normAns[i].answer_text, normAns[i].is_correct);
+    }
+    return (
+      '<div class="card shadow-sm mb-3 js-ai-suggestion-card" data-correct-group="' + escapeHtml(correctGroupName) + '">' +
+        '<div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">' +
+          '<span class="fw-semibold small text-muted js-ai-suggestion-heading">Suggested question ' + sn + '</span>' +
+          '<button type="button" class="btn btn-sm btn-outline-danger js-ai-del-question">Remove question</button>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="mb-3">' +
+            '<label class="form-label small fw-semibold">Question</label>' +
+            '<textarea class="form-control js-ai-q" rows="3" placeholder="Question text">' + escapeHtml(q.question_text || '') + '</textarea>' +
+          '</div>' +
+          '<div class="mb-3">' +
+            '<label class="form-label small fw-semibold">Answers</label>' +
+            '<p class="small text-muted mb-2">Mark the one correct answer.</p>' +
+            '<div class="js-ai-answers">' + ansRows + '</div>' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary js-ai-add-answer">+ Add answer</button>' +
+          '</div>' +
+          '<div class="mb-3">' +
+            '<label class="form-label small fw-semibold">Explanation</label>' +
+            '<textarea class="form-control js-ai-e" rows="2" placeholder="Explanation (optional)">' + escapeHtml(q.explanation || '') + '</textarea>' +
+          '</div>' +
+          '<div class="row g-2 mb-3">' +
+            '<div class="col-md-4">' +
+              '<label class="form-label small fw-semibold">Jump seconds</label>' +
+              '<input type="number" class="form-control js-ai-ts" min="0" step="1" placeholder="Optional" value="' + escapeHtml(tsStr) + '">' +
+            '</div>' +
+            '<div class="col-md-8">' +
+              '<label class="form-label small fw-semibold">Section</label>' +
+              sectionSelectAiHtml(secId) +
+            '</div>' +
+          '</div>' +
+          '<div class="mb-0">' +
+            '<label class="form-label small fw-semibold">Refs</label>' +
+            '<input type="text" class="form-control form-control-sm js-ai-r" value="' + escapeHtml(refs) + '" placeholder="e.g. V1, B2">' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renumberAiSuggestionCards() {
+    var host = document.getElementById('ai-suggestions-cards');
+    if (!host) return;
+    host.querySelectorAll('.js-ai-suggestion-card').forEach(function (card, idx) {
+      var h = card.querySelector('.js-ai-suggestion-heading');
+      if (h) h.textContent = 'Suggested question ' + (idx + 1);
     });
   }
 
-  document.getElementById('ai-suggestions-table').addEventListener('click', function (e) {
-    if (e.target.closest('.js-ai-del-row')) {
-      e.target.closest('tr').remove();
+  function renderAiSuggestionCards(qs) {
+    hideAiInsertValidation();
+    aiCardUidSeq = 0;
+    var host = document.getElementById('ai-suggestions-cards');
+    if (!host) return;
+    host.innerHTML = '';
+    var list = qs || [];
+    for (var i = 0; i < list.length; i++) {
+      host.insertAdjacentHTML('beforeend', aiSuggestionCardHtml(list[i], nextAiCardCorrectGroupName(), i + 1));
     }
-  });
+  }
 
-  document.getElementById('ai-insert-btn').addEventListener('click', function () {
-    var rows = document.querySelectorAll('#ai-suggestions-table tbody tr');
-    var newQs = [];
-    rows.forEach(function (tr) {
-      var qtext = tr.querySelector('.js-ai-q').value.trim();
-      if (!qtext) return;
-      var expl = tr.querySelector('.js-ai-e').value.trim();
-      var refs = tr.querySelector('.js-ai-r').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      var answers = [];
-      try {
-        answers = JSON.parse(tr.querySelector('.js-ai-a-json').value || '[]');
-      } catch (e) { answers = []; }
-      if (!Array.isArray(answers) || answers.length < 2) return;
-      var norm = answers.map(function (a) {
-        return {
-          answer_text: (a && a.answer_text) ? String(a.answer_text).slice(0, 500) : '',
-          is_correct: !!(a && a.is_correct)
-        };
-      }).filter(function (a) { return a.answer_text; });
-      if (norm.length < 2) return;
-      if (!norm.some(function (a) { return a.is_correct; })) norm[0].is_correct = true;
-      var tsEl = tr.querySelector('.js-ai-ts');
+  function hideAiInsertValidation() {
+    var el = document.getElementById('ai-insert-validation-alert');
+    if (el) {
+      el.classList.add('d-none');
+      el.innerHTML = '';
+    }
+  }
+
+  function showAiInsertValidation(messages) {
+    var el = document.getElementById('ai-insert-validation-alert');
+    if (!el) return;
+    var ul = '<ul class="mb-0 small">';
+    for (var i = 0; i < messages.length; i++) {
+      ul += '<li>' + escapeHtml(messages[i]) + '</li>';
+    }
+    ul += '</ul>';
+    el.innerHTML = '<strong>Cannot insert.</strong> Fix the following:' + ul;
+    el.classList.remove('d-none');
+  }
+
+  function validateAndCollectAiQuestions() {
+    var host = document.getElementById('ai-suggestions-cards');
+    if (!host) {
+      return { ok: false, questions: [], errors: ['Suggestions UI is missing.'] };
+    }
+    var cards = host.querySelectorAll('.js-ai-suggestion-card');
+    var errors = [];
+    var out = [];
+    var n = 0;
+    cards.forEach(function (card) {
+      n += 1;
+      var label = 'Question ' + n;
+      var qtext = (card.querySelector('.js-ai-q') && card.querySelector('.js-ai-q').value || '').trim();
+      if (!qtext) {
+        errors.push(label + ': question text is empty.');
+        return;
+      }
+      var rows = card.querySelectorAll('.js-ai-answer-row');
+      var filled = [];
+      var correctAmongFilled = 0;
+      rows.forEach(function (row) {
+        var t = (row.querySelector('.js-ai-answer-text') && row.querySelector('.js-ai-answer-text').value || '').trim();
+        var isCorr = row.querySelector('.js-ai-answer-correct') && row.querySelector('.js-ai-answer-correct').checked;
+        if (!t) return;
+        filled.push({ answer_text: t, is_correct: isCorr });
+        if (isCorr) correctAmongFilled += 1;
+      });
+      if (filled.length < 2) {
+        errors.push(label + ': need at least two non-empty answer options.');
+        return;
+      }
+      if (correctAmongFilled !== 1) {
+        errors.push(label + ': mark exactly one correct answer (among non-empty options).');
+        return;
+      }
+      var expl = (card.querySelector('.js-ai-e') && card.querySelector('.js-ai-e').value || '').trim();
+      var refs = (card.querySelector('.js-ai-r') && card.querySelector('.js-ai-r').value || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      var tsEl = card.querySelector('.js-ai-ts');
       var tsParsed = tsEl && tsEl.value !== '' ? parseInt(tsEl.value, 10) : null;
       if (tsParsed !== null && (isNaN(tsParsed) || tsParsed < 0)) tsParsed = null;
-      var secEl = tr.querySelector('.js-ai-section');
+      var secEl = card.querySelector('.js-ai-section');
       var secParsed = secEl && secEl.value ? parseInt(secEl.value, 10) : null;
       if (secParsed !== null && isNaN(secParsed)) secParsed = null;
-      newQs.push({
+      var norm = filled.map(function (a) {
+        return {
+          answer_text: String(a.answer_text).slice(0, 500),
+          is_correct: !!a.is_correct
+        };
+      });
+      out.push({
         question_text: qtext,
         explanation: expl,
         timestamp_seconds: tsParsed,
@@ -586,7 +752,60 @@
         answers: norm
       });
     });
-    initial.questions = (initial.questions || []).concat(newQs);
+    return { ok: errors.length === 0, questions: out, errors: errors };
+  }
+
+  var aiReviewPhase = document.getElementById('ai-quiz-phase-review');
+  if (aiReviewPhase) {
+    aiReviewPhase.addEventListener('click', function (e) {
+      if (e.target.closest('.js-ai-del-question')) {
+        var c = e.target.closest('.js-ai-suggestion-card');
+        if (c) c.remove();
+        hideAiInsertValidation();
+        renumberAiSuggestionCards();
+      }
+      if (e.target.closest('.js-ai-remove-answer')) {
+        var row = e.target.closest('.js-ai-answer-row');
+        if (row) row.remove();
+        hideAiInsertValidation();
+      }
+      if (e.target.closest('.js-ai-add-answer')) {
+        var card = e.target.closest('.js-ai-suggestion-card');
+        if (!card) return;
+        var g = card.getAttribute('data-correct-group') || '';
+        if (!g) {
+          g = nextAiCardCorrectGroupName();
+          card.setAttribute('data-correct-group', g);
+        }
+        var wrap = card.querySelector('.js-ai-answers');
+        if (wrap) {
+          wrap.insertAdjacentHTML('beforeend', aiModalAnswerRowHtml(g, '', false));
+        }
+        hideAiInsertValidation();
+      }
+    });
+  }
+
+  document.getElementById('ai-insert-btn').addEventListener('click', function () {
+    hideAiInsertValidation();
+    var res = validateAndCollectAiQuestions();
+    if (!res.ok) {
+      showAiInsertValidation(res.errors.length ? res.errors : ['Validation failed.']);
+      return;
+    }
+    if (!res.questions.length) {
+      showAiInsertValidation(['Add at least one suggested question to insert.']);
+      return;
+    }
+    initial.questions = (initial.questions || []).concat(res.questions);
+    var modeEl = document.getElementById('quiz-editor-mode');
+    var editorMode = modeEl ? String(modeEl.value).trim() : '';
+    if (editorMode === 'create') {
+      titleEl.value = 'Test your knowledge';
+      var ctEl = document.getElementById('quiz-course-title');
+      var courseTitle = (ctEl && ctEl.value) ? ctEl.value.trim() : '';
+      descEl.value = 'A quiz designed to test your understanding of ' + (courseTitle || 'this course');
+    }
     renderQuestions();
     if (aiModal) aiModal.hide();
   });

@@ -150,6 +150,9 @@ class CourseHubView(TeacherRequiredMixin, UpdateView):
         ctx = super().get_context_data(**kwargs)
         course = self.object
         ctx["videos"] = course.videos.prefetch_related("sections").order_by("created_at")
+        ctx["course_has_transcript"] = any(
+            (getattr(v, "transcript", None) or "").strip() for v in ctx["videos"]
+        )
         from django.db.models import Count
 
         ctx["quizzes"] = (
@@ -246,6 +249,10 @@ class CourseHubView(TeacherRequiredMixin, UpdateView):
             ctx["reading_latest_chunks"] = []
             ctx["reading_chunks_preview"] = []
             ctx["reading_can_remove"] = False
+        ctx.setdefault("reading_chunk_count", 0)
+        ctx["course_description_ai_ready"] = ctx["course_has_transcript"] or (
+            ctx.get("reading_chunk_count", 0) > 0
+        )
         return ctx
 
     def form_valid(self, form):
@@ -708,6 +715,66 @@ def video_ai_title_api(request):
         youtube_description=(body.get("youtube_description") or ""),
     )
     return JsonResponse(out)
+
+
+@login_required
+@require_POST
+def course_ai_description_generate(request, course_id):
+    """JSON: draft course.description from transcripts + latest top-5 reading chunks."""
+    course = get_object_or_404(_teacher_course_queryset(request.user), pk=course_id)
+    if not user_can_manage_course(request.user, course):
+        return JsonResponse({"success": False, "error": "Forbidden"}, status=403)
+
+    transcript = ""
+    try:
+        from study_content.services.retrieval import _transcript_for_query
+
+        transcript = _transcript_for_query(course, None)
+    except ImportError:
+        parts: list[str] = []
+        for v in course.videos.order_by("pk"):
+            t = (v.transcript or "").strip()
+            if t:
+                parts.append(t)
+        transcript = "\n\n".join(parts).strip()
+
+    chunk_blocks: list[tuple[str, str]] = []
+    try:
+        from study_content.models import CourseReadingContext
+
+        latest = (
+            CourseReadingContext.objects.filter(course=course)
+            .order_by("-pk")
+            .first()
+        )
+        if latest:
+            for c in latest.source_chunks.order_by("citation_label", "pk")[:5]:
+                label = (c.citation_label or "").strip() or "excerpt"
+                txt = (c.chunk_text or "").strip()
+                if txt:
+                    chunk_blocks.append((label, txt))
+    except ImportError:
+        pass
+
+    if not transcript.strip() and not chunk_blocks:
+        return JsonResponse(
+            {
+                "success": False,
+                "description": "",
+                "error": "Add video transcripts and/or save top-5 reading chunks first.",
+            },
+            status=400,
+        )
+
+    from courses.services.ai_description import generate_course_public_description
+
+    out = generate_course_public_description(
+        course_title=course.title,
+        transcript=transcript,
+        book_chunks=chunk_blocks,
+    )
+    status = 200 if out.get("success") else 400
+    return JsonResponse(out, status=status)
 
 
 @login_required

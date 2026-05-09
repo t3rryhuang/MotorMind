@@ -162,3 +162,80 @@ def generate_educational_title(
             "title": "",
             "error": f"AI request failed ({model_name}): {exc}",
         }
+
+
+def generate_course_public_description(
+    course_title: str,
+    transcript: str = "",
+    book_chunks: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    """
+    Short public-facing course description from transcript + up to five saved book chunks.
+
+    ``book_chunks`` is a list of (label, excerpt_text) from retrieval (e.g. citation labels).
+
+    Return {"success": bool, "description": str, "error": str}.
+    """
+    title = (course_title or "").strip()
+    api_key = (os.environ.get("GOOGLE_API_KEY") or "").strip()
+    if not api_key:
+        return {
+            "success": False,
+            "description": "",
+            "error": "AI description generation is not configured. Set GOOGLE_API_KEY.",
+        }
+
+    model_name = (os.environ.get("GOOGLE_MODEL_NAME") or "gemma-3-27b-it").strip()
+    tr = (transcript or "").strip()
+    tr_snip = tr[:14000] if len(tr) > 14000 else tr
+
+    chunks = book_chunks or []
+    chunk_lines: list[str] = []
+    for label, text in chunks[:5]:
+        lab = (label or "").strip() or "excerpt"
+        body = (text or "").strip()
+        if not body:
+            continue
+        body_snip = body[:3500] if len(body) > 3500 else body
+        chunk_lines.append(f"[{lab}]\n{body_snip}")
+    chunks_blob = "\n\n---\n\n".join(chunk_lines) if chunk_lines else "(none)"
+
+    prompt = (
+        "You are writing a short public course description for an automotive / technical education "
+        "platform (Car-Hoot). Write 2–4 clear sentences in a professional teaching tone for learners "
+        "browsing courses. Base your answer ONLY on the course title, optional training video transcript "
+        "excerpt, and optional excerpts from linked book / manual chunks below. "
+        "Do not invent credentials, tools, or topics not supported by the materials. "
+        "Do not mention chunk labels, retrieval, or AI.\n\n"
+        f"Course title:\n{title or '(none)'}\n\n"
+        f"Training video transcript excerpt (may be empty):\n{tr_snip or '(none)'}\n\n"
+        f"Top book/manual excerpts (may be empty):\n{chunks_blob}\n"
+    )
+
+    try:
+        import google.generativeai as genai
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content(prompt)
+        text = (getattr(response, "text", None) or "").strip()
+        if not text and getattr(response, "candidates", None):
+            parts = []
+            for c in response.candidates:
+                for p in getattr(c, "content", None).parts or []:
+                    if getattr(p, "text", None):
+                        parts.append(p.text)
+            text = "\n".join(parts).strip()
+        if not text:
+            return {
+                "success": False,
+                "description": "",
+                "error": "The model returned an empty response. Try again or adjust GOOGLE_MODEL_NAME.",
+            }
+        return {"success": True, "description": text, "error": ""}
+    except Exception as exc:
+        return {
+            "success": False,
+            "description": "",
+            "error": f"AI request failed ({model_name}): {exc}",
+        }
