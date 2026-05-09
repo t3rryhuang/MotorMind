@@ -75,3 +75,90 @@ def generate_video_description(
             "description": "",
             "error": f"AI request failed ({model_name}): {exc}",
         }
+
+
+def _strip_title_noise(text: str) -> str:
+    t = (text or "").strip()
+    t = t.strip(' "\'“”')
+    # Collapse whitespace; drop lines after first line if model added explanation
+    line = t.splitlines()[0].strip() if t else ""
+    if len(line) > 80:
+        cut = line[:80].rsplit(" ", 1)[0]
+        line = cut.rstrip(" ,;:") or line[:80]
+    return line
+
+
+def generate_educational_title(
+    title: str,
+    transcript: str = "",
+    youtube_description: str = "",
+) -> dict[str, Any]:
+    """
+    Return {"success": bool, "title": str, "error": str}.
+
+    Rewrites a noisy YouTube title into a concise educational title (max 80 chars).
+    If GOOGLE_API_KEY is missing, returns a clear not-configured message.
+    """
+    title = (title or "").strip()
+    api_key = (os.environ.get("GOOGLE_API_KEY") or "").strip()
+    if not api_key:
+        return {
+            "success": False,
+            "title": "",
+            "error": "AI title rewrite is not configured. Set GOOGLE_API_KEY.",
+        }
+
+    model_name = (os.environ.get("GOOGLE_MODEL_NAME") or "gemma-3-27b-it").strip()
+
+    yt_desc = (youtube_description or "").strip()
+    tr = (transcript or "").strip()
+    tr_snip = tr[:12000] if len(tr) > 12000 else tr
+    yt_snip = yt_desc[:4000] if len(yt_desc) > 4000 else yt_desc
+
+    prompt = (
+        "You are naming a lesson for an automotive electronics education platform. "
+        "Rewrite the ORIGINAL TITLE into a clear, classroom-style title. "
+        "Remove hashtags, sponsor tags, ALL CAPS clickbait, and filler like “watch this”. "
+        "Do not invent topics, tools, vehicle systems, or outcomes that are not clearly supported "
+        "by the original title, YouTube description, or transcript excerpt. "
+        "Keep it concise. Output ONLY the rewritten title text — no quotes, no numbering, no preamble — "
+        "and at most 80 characters.\n\n"
+        f"Original title:\n{title or '(none)'}\n\n"
+        f"YouTube description (may be empty):\n{yt_snip or '(none)'}\n\n"
+        f"Transcript excerpt (may be empty):\n{tr_snip or '(none)'}\n"
+    )
+
+    try:
+        import google.generativeai as genai
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content(prompt)
+        text = (getattr(response, "text", None) or "").strip()
+        if not text and getattr(response, "candidates", None):
+            parts = []
+            for c in response.candidates:
+                for p in getattr(c, "content", None).parts or []:
+                    if getattr(p, "text", None):
+                        parts.append(p.text)
+            text = "\n".join(parts).strip()
+        if not text:
+            return {
+                "success": False,
+                "title": "",
+                "error": "The model returned an empty response. Try another GOOGLE_MODEL_NAME.",
+            }
+        cleaned = _strip_title_noise(text)
+        if not cleaned:
+            return {
+                "success": False,
+                "title": "",
+                "error": "The model returned an unusable title.",
+            }
+        return {"success": True, "title": cleaned, "error": ""}
+    except Exception as exc:
+        return {
+            "success": False,
+            "title": "",
+            "error": f"AI request failed ({model_name}): {exc}",
+        }

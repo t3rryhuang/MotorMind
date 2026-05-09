@@ -1,16 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Edit {{ quiz.title }} — Car-Hoot{% endblock %}
+{% block title %}{{ editor_heading }} — Car-Hoot{% endblock %}
 {% block content %}
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb">
     <li class="breadcrumb-item"><a href="{% url 'accounts:admin_panel' %}">Admin panel</a></li>
     <li class="breadcrumb-item"><a href="{{ back_url }}">{{ course.title }}</a></li>
-    <li class="breadcrumb-item active">Edit quiz</li>
+    <li class="breadcrumb-item active">{{ editor_heading }}</li>
   </ol>
 </nav>
 
 {{ quiz_initial|json_script:"quiz-initial-data" }}
 {{ section_options|json_script:"section-options-data" }}
+<input type="hidden" id="ai-suggestions-url" value="{{ ai_suggestions_url }}">
+{{ quiz_ai_gate|json_script:"quiz-ai-gate-data" }}
 
 <div class="sticky-top bg-white border-bottom py-2 mb-3 shadow-sm" style="z-index: 1020;">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -19,13 +21,18 @@
       <span class="text-muted small d-none d-md-inline">Autosave is manual — click Save quiz.</span>
     </div>
     <div class="d-flex flex-wrap gap-2">
+      {% if quiz %}
       <a class="btn btn-outline-primary btn-sm" href="{{ preview_url }}" target="_blank" rel="noopener">Preview</a>
+      {% else %}
+      <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Save the quiz first to preview">Preview</button>
+      {% endif %}
+      <button type="button" class="btn btn-outline-success btn-sm" id="btn-ai-quiz-suggestions">Smart AI suggestions</button>
       <button type="submit" form="quiz-editor-form" class="btn btn-primary btn-sm">Save quiz</button>
     </div>
   </div>
 </div>
 
-<h1 class="h3 mb-3">Edit quiz</h1>
+<h1 class="h3 mb-3">{{ editor_heading }}</h1>
 
 <form id="quiz-editor-form" method="post" novalidate>
   {% csrf_token %}
@@ -57,6 +64,71 @@
   <button type="button" class="btn btn-outline-primary mb-5" id="btn-add-question-bottom">+ Add question</button>
 </form>
 
+<div class="modal fade" id="aiQuizModal" tabindex="-1" aria-labelledby="aiQuizModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="aiQuizModalLabel">Smart AI suggestions</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="ai-quiz-phase-working">
+          <p id="ai-quiz-status" class="small mb-2 text-body-secondary"></p>
+          <div id="ai-quiz-progress-wrap" class="mb-3">
+            <div class="progress" style="height: 10px;">
+              <div id="ai-quiz-progress-bar" class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+        <div id="ai-quiz-phase-config" class="d-none">
+          <p class="small text-muted mb-2">Transcript focus and question count apply to the next AI request.</p>
+          <div class="mb-3">
+            <label class="form-label small">Video for transcript focus (optional)</label>
+            <select class="form-select form-select-sm" id="ai-video-id" style="max-width: 28rem;">
+              <option value="">All course videos</option>
+              {% for v in course.videos.all %}
+                <option value="{{ v.pk }}">{{ v.title|truncatechars:60 }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="ai-count-mode" id="ai-mode-auto" value="auto" checked>
+              <label class="form-check-label" for="ai-mode-auto">Automatic number of questions</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="ai-count-mode" id="ai-mode-manual" value="manual">
+              <label class="form-check-label" for="ai-mode-manual">Manual count (max 20)</label>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small" for="ai-manual-count">Question count (manual)</label>
+            <input type="number" class="form-control form-control-sm" id="ai-manual-count" min="1" max="20" value="8" style="max-width: 8rem;" disabled>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="ai-regenerate-btn">Regenerate with these options</button>
+        </div>
+        <p class="small text-danger mb-2 d-none" id="ai-quiz-error"></p>
+        <div id="ai-quiz-phase-review" class="d-none">
+          <p class="small text-muted">Review and edit suggestions, remove rows you do not want, then insert into the editor (does not save until you click Save quiz).</p>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle" id="ai-suggestions-table">
+              <thead><tr><th></th><th>Question</th><th>Answers / correct</th><th>Explanation</th><th>Refs</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mt-2">
+            <button type="button" class="btn btn-primary btn-sm" id="ai-insert-btn">Insert into quiz</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="ai-from-review-options">Options &amp; regenerate</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_js %}
 <script>
 (function () {
   function readJsonScript(id) {
@@ -72,6 +144,7 @@
     return d.innerHTML;
   }
 
+  var aiSuggestionsUrl = (document.getElementById('ai-suggestions-url') || {}).value || '';
   var initial = readJsonScript('quiz-initial-data') || { title: '', description: '', pass_mark: 70, questions: [] };
   var sectionOptions = readJsonScript('section-options-data') || [];
 
@@ -122,6 +195,7 @@
     var expl = q && q.explanation ? q.explanation : '';
     var ts = q && q.timestamp_seconds != null && q.timestamp_seconds !== '' ? String(q.timestamp_seconds) : '';
     var secId = q && q.section_id != null ? q.section_id : '';
+    var refs = (q && q.source_refs && q.source_refs.length) ? q.source_refs.join(', ') : '';
     var answers = q && q.answers && q.answers.length
       ? q.answers.map(function (a) { return answerRowHtml(a); }).join('')
       : answerRowHtml({ answer_text: '', is_correct: false });
@@ -136,6 +210,10 @@
           '<div class="mb-3">' +
             '<label class="form-label">Question</label>' +
             '<textarea class="form-control js-question-text" rows="3" placeholder="Enter your question">' + escapeHtml(qtext) + '</textarea>' +
+          '</div>' +
+          '<div class="mb-2">' +
+            '<label class="form-label small">Source refs (comma-separated, e.g. V1,B2)</label>' +
+            '<input type="text" class="form-control form-control-sm js-source-refs" value="' + escapeHtml(refs) + '" placeholder="Optional">' +
           '</div>' +
           '<div class="mb-3">' +
             '<label class="form-label">Explanation (shown after answer)</label>' +
@@ -189,6 +267,8 @@
       var tsRaw = card.querySelector('.js-timestamp').value.trim();
       var ts = tsRaw === '' ? null : parseInt(tsRaw, 10);
       if (isNaN(ts)) ts = null;
+      var refsRaw = (card.querySelector('.js-source-refs') && card.querySelector('.js-source-refs').value) || '';
+      var source_refs = refsRaw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
       var answers = [];
       card.querySelectorAll('.js-answer-row').forEach(function (row) {
         var cidRaw = row.querySelector('.js-answer-id').value.trim();
@@ -209,6 +289,7 @@
         timestamp_seconds: ts,
         section_id: sectionVal,
         order: orderIdx,
+        source_refs: source_refs,
         answers: answers
       });
     });
@@ -248,6 +329,243 @@
   });
 
   renderQuestions();
+
+  /* —— Smart AI suggestions —— */
+  function getCookie(name) {
+    var v = null;
+    if (document.cookie) {
+      document.cookie.split(';').forEach(function (c) {
+        var p = c.trim().split('=');
+        if (p[0] === name) v = decodeURIComponent(p.slice(1).join('='));
+      });
+    }
+    return v;
+  }
+
+  var phaseWorking = document.getElementById('ai-quiz-phase-working');
+  var phaseConfig = document.getElementById('ai-quiz-phase-config');
+  var phaseReview = document.getElementById('ai-quiz-phase-review');
+  var aiStatusEl = document.getElementById('ai-quiz-status');
+  var aiProgBar = document.getElementById('ai-quiz-progress-bar');
+  var aiErrEl = document.getElementById('ai-quiz-error');
+
+  function setAiProgress(pct, opts) {
+    opts = opts || {};
+    var bar = aiProgBar;
+    if (!bar) return;
+    var w = Math.max(0, Math.min(100, pct));
+    bar.style.width = w + '%';
+    bar.classList.remove('bg-primary', 'bg-danger', 'bg-success', 'progress-bar-striped', 'progress-bar-animated');
+    if (opts.variant === 'danger') bar.classList.add('bg-danger');
+    else if (opts.variant === 'success') bar.classList.add('bg-success');
+    else bar.classList.add('bg-primary');
+    if (opts.striped) {
+      bar.classList.add('progress-bar-striped');
+      if (opts.animated) bar.classList.add('progress-bar-animated');
+    }
+  }
+
+  function setAiStatus(msg) {
+    if (aiStatusEl) aiStatusEl.textContent = msg || '';
+  }
+
+  function resetAiModalUi() {
+    setAiStatus('');
+    setAiProgress(0, {});
+    if (aiErrEl) { aiErrEl.classList.add('d-none'); aiErrEl.textContent = ''; }
+    if (phaseConfig) phaseConfig.classList.add('d-none');
+    if (phaseReview) phaseReview.classList.add('d-none');
+    if (phaseWorking) phaseWorking.classList.remove('d-none');
+  }
+
+  var aiModalEl = document.getElementById('aiQuizModal');
+  var aiModal = aiModalEl && window.bootstrap ? new bootstrap.Modal(aiModalEl) : null;
+
+  if (aiModalEl) {
+    aiModalEl.addEventListener('hidden.bs.modal', function () {
+      resetAiModalUi();
+    });
+  }
+
+  var pendingAiQuestions = [];
+
+  function runAiFetch() {
+    var errEl = document.getElementById('ai-quiz-error');
+    errEl.classList.add('d-none');
+    errEl.textContent = '';
+    if (phaseConfig) phaseConfig.classList.remove('d-none');
+    setAiProgress(45, { variant: 'primary', striped: true, animated: true });
+    setAiStatus('Calling AI to draft questions…');
+
+    var mode = document.getElementById('ai-mode-manual').checked ? 'manual' : 'auto';
+    var vid = document.getElementById('ai-video-id').value;
+    var body = {
+      video_id: vid ? parseInt(vid, 10) : null,
+      question_count_mode: mode,
+      question_count: mode === 'manual' ? parseInt(document.getElementById('ai-manual-count').value, 10) : null
+    };
+
+    return fetch(aiSuggestionsUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': (form.querySelector('[name=csrfmiddlewaretoken]') || {}).value || getCookie('csrftoken') || ''
+      },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.j.success) {
+          setAiProgress(100, { variant: 'danger', striped: false });
+          setAiStatus(res.j.error || 'AI suggestions failed.');
+          errEl.textContent = res.j.error || 'AI suggestions failed.';
+          errEl.classList.remove('d-none');
+          return;
+        }
+        setAiProgress(100, { variant: 'success', striped: false });
+        setAiStatus('Done. Review and edit below, then insert into the quiz.');
+        pendingAiQuestions = res.j.questions || [];
+        buildReviewTable(pendingAiQuestions);
+        if (phaseWorking) phaseWorking.classList.add('d-none');
+        if (phaseConfig) phaseConfig.classList.add('d-none');
+        if (phaseReview) phaseReview.classList.remove('d-none');
+      })
+      .catch(function () {
+        setAiProgress(100, { variant: 'danger', striped: false });
+        setAiStatus('Network error.');
+        errEl.textContent = 'Network error.';
+        errEl.classList.remove('d-none');
+      });
+  }
+
+  document.getElementById('btn-ai-quiz-suggestions').addEventListener('click', function () {
+    resetAiModalUi();
+    if (!aiModal) {
+      window.alert('The page finished loading before Bootstrap; refresh and try again.');
+      return;
+    }
+    aiModal.show();
+    if (!aiSuggestionsUrl) {
+      setAiProgress(100, { variant: 'danger', striped: false });
+      setAiStatus('AI suggestions are not configured for this page.');
+      if (aiErrEl) {
+        aiErrEl.textContent = 'Missing AI suggestions URL.';
+        aiErrEl.classList.remove('d-none');
+      }
+      return;
+    }
+    setAiProgress(12, { variant: 'primary', striped: true, animated: true });
+    setAiStatus('Checking prerequisites…');
+    window.setTimeout(function () {
+      var gate = readJsonScript('quiz-ai-gate-data');
+      if (!gate || !gate.ready) {
+        setAiProgress(100, { variant: 'danger', striped: false });
+        var msg = (gate && gate.message)
+          ? gate.message
+          : 'Smart AI suggestions need at least one training video and five saved reading chunks.';
+        setAiStatus(msg);
+        if (aiErrEl) {
+          aiErrEl.textContent = msg;
+          aiErrEl.classList.remove('d-none');
+        }
+        return;
+      }
+      setAiProgress(28, { variant: 'primary', striped: true, animated: true });
+      setAiStatus('Prerequisites met. Preparing the AI request…');
+      window.setTimeout(function () {
+        runAiFetch();
+      }, 180);
+    }, 40);
+  });
+
+  document.querySelectorAll('input[name="ai-count-mode"]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      var manual = document.getElementById('ai-manual-count');
+      manual.disabled = !document.getElementById('ai-mode-manual').checked;
+    });
+  });
+
+  document.getElementById('ai-regenerate-btn').addEventListener('click', function () {
+    if (!aiSuggestionsUrl || !aiModal) return;
+    if (aiErrEl) { aiErrEl.classList.add('d-none'); aiErrEl.textContent = ''; }
+    if (phaseReview) phaseReview.classList.add('d-none');
+    if (phaseWorking) phaseWorking.classList.remove('d-none');
+    if (phaseConfig) phaseConfig.classList.remove('d-none');
+    setAiProgress(22, { variant: 'primary', striped: true, animated: true });
+    setAiStatus('Regenerating with your options…');
+    runAiFetch();
+  });
+
+  var aiFromReviewBtn = document.getElementById('ai-from-review-options');
+  if (aiFromReviewBtn) {
+    aiFromReviewBtn.addEventListener('click', function () {
+      if (phaseReview) phaseReview.classList.add('d-none');
+      if (phaseWorking) phaseWorking.classList.remove('d-none');
+      if (phaseConfig) phaseConfig.classList.remove('d-none');
+      setAiProgress(0, {});
+      setAiStatus('Adjust video and question count, then click “Regenerate with these options”.');
+    });
+  }
+
+  function buildReviewTable(qs) {
+    var tb = document.querySelector('#ai-suggestions-table tbody');
+    tb.innerHTML = '';
+    qs.forEach(function (q, idx) {
+      var refs = (q.source_refs || []).join(', ');
+      var answersJson = '';
+      try { answersJson = JSON.stringify(q.answers || [], null, 0); } catch (e) { answersJson = '[]'; }
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><button type="button" class="btn btn-sm btn-outline-danger js-ai-del-row">Remove</button></td>' +
+        '<td><textarea class="form-control form-control-sm js-ai-q" rows="3">' + escapeHtml(q.question_text || '') + '</textarea></td>' +
+        '<td><textarea class="form-control form-control-sm js-ai-a-json" rows="6" title="JSON array of {answer_text, is_correct}">' + escapeHtml(answersJson) + '</textarea></td>' +
+        '<td><textarea class="form-control form-control-sm js-ai-e" rows="3">' + escapeHtml(q.explanation || '') + '</textarea></td>' +
+        '<td><input type="text" class="form-control form-control-sm js-ai-r" value="' + escapeHtml(refs) + '"></td>';
+      tr.dataset.idx = String(idx);
+      tb.appendChild(tr);
+    });
+  }
+
+  document.getElementById('ai-suggestions-table').addEventListener('click', function (e) {
+    if (e.target.closest('.js-ai-del-row')) {
+      e.target.closest('tr').remove();
+    }
+  });
+
+  document.getElementById('ai-insert-btn').addEventListener('click', function () {
+    var rows = document.querySelectorAll('#ai-suggestions-table tbody tr');
+    var newQs = [];
+    rows.forEach(function (tr) {
+      var qtext = tr.querySelector('.js-ai-q').value.trim();
+      if (!qtext) return;
+      var expl = tr.querySelector('.js-ai-e').value.trim();
+      var refs = tr.querySelector('.js-ai-r').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      var answers = [];
+      try {
+        answers = JSON.parse(tr.querySelector('.js-ai-a-json').value || '[]');
+      } catch (e) { answers = []; }
+      if (!Array.isArray(answers) || answers.length < 2) return;
+      var norm = answers.map(function (a) {
+        return {
+          answer_text: (a && a.answer_text) ? String(a.answer_text).slice(0, 500) : '',
+          is_correct: !!(a && a.is_correct)
+        };
+      }).filter(function (a) { return a.answer_text; });
+      if (norm.length < 2) return;
+      if (!norm.some(function (a) { return a.is_correct; })) norm[0].is_correct = true;
+      newQs.push({
+        question_text: qtext,
+        explanation: expl,
+        timestamp_seconds: null,
+        section_id: null,
+        source_refs: refs,
+        answers: norm
+      });
+    });
+    initial.questions = (initial.questions || []).concat(newQs);
+    renderQuestions();
+    if (aiModal) aiModal.hide();
+  });
 })();
 </script>
 {% endblock %}

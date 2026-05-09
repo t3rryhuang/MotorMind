@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "quizzes",
     "ar_tasks",
     "resources",
+    "study_content",
     "api",
 ]
 

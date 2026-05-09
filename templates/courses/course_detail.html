@@ -64,6 +64,37 @@
   </div>
 </div>
 
+{% if course_reading_page %}
+<div class="card shadow-sm mt-4" id="course-reading-section">
+  <div class="card-header fw-semibold">Reading</div>
+  <div class="card-body">
+    <h2 class="h5">{{ course_reading_title }}</h2>
+    <div id="course-reading-body" class="reading-body">{{ course_reading_html|safe }}</div>
+    {% if course_reading_page.citations %}
+      <hr>
+      <h3 class="h6">Sources</h3>
+      <ul class="small mb-0">
+        {% for c in course_reading_page.citations %}
+          <li>
+            {% if c.surname %}
+              <abbr class="reading-cite{% if c.type == 'video' %} reading-cite--video{% endif %}" title="{{ c.hover_title|default:''|escape }}">{{ c.surname }}</abbr>
+              {% if c.source_title %}<span class="text-muted"> — {{ c.source_title }}</span>{% endif %}
+            {% elif c.type == "book" %}
+              <strong>{{ c.id|default:"—" }}</strong>
+              — {{ c.source_title|default:"" }}{% if c.author %} ({{ c.author }}){% endif %}{% if c.page_number %}, p. {{ c.page_number }}{% endif %}
+            {% elif c.type == "video" %}
+              — Video: {{ c.video_title|default:"Course videos" }}
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+</div>
+{% elif user.is_authenticated and user_profile and user_profile.role == 'teacher' %}
+<p class="small text-muted mt-4 mb-0">No reading content published for this course yet.</p>
+{% endif %}
+
 <div class="card shadow-sm mt-4">
   <div class="card-header fw-semibold">Quizzes</div>
   <ul class="list-group list-group-flush">
@@ -100,4 +131,40 @@
     {% endfor %}
   </ul>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if course_reading_page %}
+<style>
+.reading-cite { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.reading-cite--video { font-style: italic; }
+</style>
+{% endif %}
+{% if course_reading_page and course_reading_diagrams %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+{{ course_reading_diagrams|json_script:"course-reading-diagrams" }}
+<script>
+(function () {
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+  var diagrams = [];
+  try {
+    var el = document.getElementById('course-reading-diagrams');
+    diagrams = el && el.textContent ? JSON.parse(el.textContent) : [];
+  } catch (e) {}
+  var host = document.getElementById('course-reading-body');
+  if (!host || !diagrams.length) return;
+  host.querySelectorAll('[data-diagram-id]').forEach(function (slot) {
+    var id = slot.getAttribute('data-diagram-id');
+    var d = diagrams.find(function (x) { return x && x.id === id; });
+    if (!d || !d.code) return;
+    var pre = document.createElement('pre');
+    pre.className = 'mermaid';
+    pre.textContent = d.code;
+    slot.innerHTML = '';
+    slot.appendChild(pre);
+  });
+  try { mermaid.run({ querySelector: '#course-reading-body .mermaid' }); } catch (e) {}
+})();
+</script>
+{% endif %}
 {% endblock %}

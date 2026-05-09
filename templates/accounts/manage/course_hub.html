@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load resource_extras %}
 {% block title %}Edit {{ course.title }} — Car-Hoot{% endblock %}
 {% block content %}
 <nav aria-label="breadcrumb">
@@ -141,8 +142,262 @@
   </div>
 </div>
 
+{% if resources_module_available %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold">Linked resources / books</div>
+  <div class="card-body">
+    <p class="small text-muted">
+      Attach PDFs and books already in the resource library. Detaching removes the course link only — files and vectors stay unless you delete the resource from the library.
+    </p>
+
+    {% if linked_resources %}
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Author</th>
+              <th>Source title</th>
+              <th>ISBN</th>
+              <th>Status</th>
+              <th>Chunks</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in linked_resources %}
+              <tr>
+                <td class="fw-semibold">{{ r.title }}</td>
+                <td class="small">{{ r.author|default:"—" }}</td>
+                <td class="small">{{ r.source_title|default:"—" }}</td>
+                <td class="small text-nowrap">{{ r.isbn|default:"—" }}</td>
+                <td><span class="badge bg-light text-dark">{{ r.get_status_display }}</span></td>
+                <td>{{ r.chunk_count }}</td>
+                <td class="text-nowrap text-end">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'resources:detail' r.pk %}">View</a>
+                  <form method="post" action="{% url 'accounts:course_resource_detach' course.pk r.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-warning" onclick="return confirm('Detach this resource from the course?');">Detach</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted small mb-3">No resources linked yet.</p>
+    {% endif %}
+
+    <form method="post" action="{% url 'accounts:course_resource_attach' course.pk %}" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <div class="col-md-8">
+        <label class="form-label small mb-0" for="attach-resource-select">Add existing resource</label>
+        <select class="form-select form-select-sm" id="attach-resource-select" name="resource_id" required>
+          <option value="" selected disabled>Choose a resource…</option>
+          {% for ar in available_resources %}
+            <option value="{{ ar.pk }}">{{ ar.title }} — {{ ar.get_resource_type_display }} ({{ ar.get_status_display }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <button type="submit" class="btn btn-sm btn-primary w-100" {% if not available_resources %}disabled{% endif %}>Attach resource</button>
+      </div>
+    </form>
+    {% if not available_resources %}
+      <p class="small text-muted mb-0 mt-2">All eligible resources are already linked, or none exist yet. Upload new items from the resource library.</p>
+    {% endif %}
+
+    {% if linked_book_resources %}
+      <hr class="my-4">
+      <h2 class="h6 fw-semibold mb-3">Linked books</h2>
+      <div id="courseBookCarousel" class="carousel slide border rounded bg-light p-3" data-bs-ride="false">
+        <div class="carousel-inner">
+          {% for bk in linked_book_resources %}
+            <div class="carousel-item{% if forloop.first %} active{% endif %}">
+              <div class="d-flex flex-column flex-md-row gap-3 align-items-start">
+                <div class="flex-shrink-0 mx-auto mx-md-0">
+                  {% if bk|resource_cover_thumb %}
+                    <img src="{{ bk|resource_cover_thumb }}" alt="" class="rounded border shadow-sm" style="width: 140px; max-height: 200px; object-fit: contain;" loading="lazy" width="140" height="200">
+                  {% else %}
+                    <div class="border rounded bg-white text-muted small d-flex align-items-center justify-content-center" style="width: 140px; height: 200px;">No cover</div>
+                  {% endif %}
+                </div>
+                <div class="flex-grow-1 small">
+                  <div class="fw-semibold">{{ bk.title }}</div>
+                  <div class="text-muted">{{ bk.author|default:"—" }}</div>
+                  <div class="text-muted">ISBN {{ bk.isbn|default:"—" }}</div>
+                  <div class="text-muted">{{ bk.get_status_display }} · {{ bk.chunk_count }} chunks</div>
+                  {% if bk.source_title %}
+                    <div class="mt-2"><span class="text-muted">Source:</span> {{ bk.source_title }}</div>
+                  {% endif %}
+                  <div class="mt-2">
+                    <a class="btn btn-sm btn-outline-primary" href="{% url 'resources:detail' bk.pk %}">Open in library</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+        {% if linked_book_resources|length > 1 %}
+          <button class="carousel-control-prev" type="button" data-bs-target="#courseBookCarousel" data-bs-slide="prev" style="width: 3rem;">
+            <span class="carousel-control-prev-icon bg-dark rounded" aria-hidden="true"></span>
+            <span class="visually-hidden">Previous</span>
+          </button>
+          <button class="carousel-control-next" type="button" data-bs-target="#courseBookCarousel" data-bs-slide="next" style="width: 3rem;">
+            <span class="carousel-control-next-icon bg-dark rounded" aria-hidden="true"></span>
+            <span class="visually-hidden">Next</span>
+          </button>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if study_content_enabled %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold">Reading</div>
+  <div class="card-body">
+    <p class="small text-muted mb-2">
+      Find the top 5 most similar <strong>resource chunks globally</strong> for this course using your training video transcripts, then generate a BBC Bitesize-style reading with citations and Mermaid diagrams.
+    </p>
+    <dl class="row small mb-3">
+      <dt class="col-sm-4">Status</dt>
+      <dd class="col-sm-8">{{ reading_status }}</dd>
+      <dt class="col-sm-4">Last updated</dt>
+      <dd class="col-sm-8">{% if reading_updated %}{{ reading_updated }}{% else %}—{% endif %}</dd>
+      <dt class="col-sm-4">Chunks in latest retrieval</dt>
+      <dd class="col-sm-8">{{ reading_chunk_count }}</dd>
+    </dl>
+    <form method="post" action="{% url 'study_content:reading_find_chunks' course.pk %}" class="mb-3">
+      {% csrf_token %}
+      <label class="form-label small mb-0">Transcript source (optional)</label>
+      <select class="form-select form-select-sm mb-2" name="video_id" style="max-width: 22rem;">
+        <option value="">All course videos (concatenated transcripts)</option>
+        {% for v in videos %}
+          <option value="{{ v.pk }}">{{ v.title|truncatechars:48 }}</option>
+        {% endfor %}
+      </select>
+      {% if reading_latest_chunks %}
+        {{ reading_chunks_preview|json_script:"course-hub-chunks-json" }}
+        <p class="small text-muted mb-1">Latest retrieval — click a row for full chunk text.</p>
+        <div class="table-responsive border rounded bg-white">
+          <table class="table table-sm table-hover align-middle mb-0" id="reading-chunks-preview-table">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Resource</th>
+                <th scope="col">Author</th>
+                <th scope="col">Page</th>
+                <th scope="col">Score</th>
+                <th scope="col">Preview</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ch in reading_latest_chunks %}
+                <tr class="reading-chunk-row" style="cursor: pointer;" role="button" tabindex="0" data-chunk-idx="{{ forloop.counter0 }}" title="Click to open full chunk">
+                  <td class="text-nowrap small">{{ ch.citation_label|default:"—" }}</td>
+                  <td class="small">{{ ch.resource_title|default:ch.source_title|truncatechars:40|default:"—" }}</td>
+                  <td class="small">{{ ch.author|default:"—"|truncatechars:24 }}</td>
+                  <td class="small text-nowrap">{% if ch.page_number %}{{ ch.page_number }}{% else %}—{% endif %}</td>
+                  <td class="small text-nowrap">{% if ch.score != None %}{{ ch.score|floatformat:3 }}{% else %}—{% endif %}</td>
+                  <td class="small text-muted">{{ ch.chunk_text|truncatewords:22 }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="small text-muted mb-2">No saved chunks yet — run “Find top 5 chunks” after linking resources and adding transcripts.</p>
+      {% endif %}
+      <div class="mt-2">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Find top 5 chunks</button>
+      </div>
+    </form>
+
+    <div class="modal fade" id="readingChunkDetailModal" tabindex="-1" aria-labelledby="readingChunkDetailLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title h5" id="readingChunkDetailLabel">Chunk detail</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <dl class="row small mb-3" id="reading-chunk-meta"></dl>
+            <h3 class="h6">Full text</h3>
+            <pre class="small bg-light border rounded p-3 mb-0" style="white-space: pre-wrap; max-height: 55vh;" id="reading-chunk-full"></pre>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <form method="post" action="{% url 'study_content:reading_generate' course.pk %}" class="d-inline ms-1">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-primary">Generate reading</button>
+    </form>
+    <a class="btn btn-sm btn-outline-secondary ms-1" href="{% url 'study_content:reading_edit' course.pk %}">Edit reading</a>
+    <a class="btn btn-sm btn-outline-info ms-1" href="{% url 'study_content:reading_preview' course.pk %}" target="_blank" rel="noopener">Preview reading</a>
+  </div>
+</div>
+{% endif %}
+
 <p class="small text-muted mt-3 mb-0">
   For bulk edits, filters, and inlines you can still use the
   <a href="/admin/">Django admin</a> (courses, videos, quizzes, AR tasks).
 </p>
+{% endblock %}
+
+{% block extra_js %}
+{% if study_content_enabled and reading_chunks_preview %}
+<script>
+(function () {
+  var dataEl = document.getElementById('course-hub-chunks-json');
+  if (!dataEl) return;
+  var chunks = [];
+  try { chunks = JSON.parse(dataEl.textContent || '[]'); } catch (e) {}
+  var modalEl = document.getElementById('readingChunkDetailModal');
+  var modal = modalEl && window.bootstrap ? new bootstrap.Modal(modalEl) : null;
+  var metaEl = document.getElementById('reading-chunk-meta');
+  var fullEl = document.getElementById('reading-chunk-full');
+
+  function esc(s) {
+    if (s == null || s === '') return '—';
+    var d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  function openChunk(idx) {
+    var c = chunks[idx];
+    if (!c || !modal) return;
+    document.getElementById('readingChunkDetailLabel').textContent = 'Chunk ' + (c.label || (idx + 1));
+    metaEl.innerHTML =
+      '<dt class="col-sm-3">Label</dt><dd class="col-sm-9">' + esc(c.label) + '</dd>' +
+      '<dt class="col-sm-3">Resource</dt><dd class="col-sm-9">' + esc(c.resource_title) + '</dd>' +
+      '<dt class="col-sm-3">Author</dt><dd class="col-sm-9">' + esc(c.author) + '</dd>' +
+      '<dt class="col-sm-3">Section</dt><dd class="col-sm-9">' + esc(c.section_title) + '</dd>' +
+      '<dt class="col-sm-3">Page</dt><dd class="col-sm-9">' + esc(c.page_number) + '</dd>' +
+      '<dt class="col-sm-3">Score</dt><dd class="col-sm-9">' + esc(c.score) + '</dd>';
+    fullEl.textContent = c.full_text || '';
+    modal.show();
+  }
+
+  document.querySelectorAll('.reading-chunk-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      var idx = parseInt(row.getAttribute('data-chunk-idx'), 10);
+      if (!isNaN(idx)) openChunk(idx);
+    });
+    row.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        row.click();
+      }
+    });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -208,6 +208,8 @@ def query_similar_chunks(
     resource_type: str | None = None,
     resource_id: int | None = None,
     collection_name: str | None = None,
+    *,
+    max_vector_results: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Semantic search against Chroma. Optional filters applied in Python when needed
@@ -222,6 +224,11 @@ def query_similar_chunks(
     collection = get_collection(collection_name)
     q_emb = [ef.embed_query(query)]
     n_fetch = max(top_k * 8, top_k + 5)
+    # Course filter is applied in Python; fetch more so enough course-linked hits exist.
+    if course_id is not None:
+        n_fetch = max(n_fetch, 400)
+    if max_vector_results is not None:
+        n_fetch = max(n_fetch, int(max_vector_results))
 
     where: dict[str, Any] | None = None
     if resource_id is not None:

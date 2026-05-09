@@ -24,10 +24,12 @@
             {{ form.video_url }}
             {% if form.video_url.help_text %}<div class="form-text">{{ form.video_url.help_text }}</div>{% endif %}
             {% for err in form.video_url.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
-            <div class="mt-2 d-flex flex-wrap gap-2">
-              <button type="button" class="btn btn-outline-primary btn-sm" id="btn-youtube-autofill">
-                Auto-fill title and transcript
-              </button>
+            <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+              <div class="btn-group btn-group-sm" role="group" aria-label="YouTube helpers">
+                <button type="button" class="btn btn-outline-primary" id="btn-youtube-autofill">Auto-fill title and transcript</button>
+                <button type="button" class="btn btn-outline-primary" id="btn-ai-title">AI rewrite title</button>
+                <button type="button" class="btn btn-outline-primary" id="btn-ai-description">AI write description</button>
+              </div>
             </div>
             <div class="mt-2 d-none" id="thumb-preview-wrap">
               <span class="small text-muted d-block mb-1">Thumbnail preview (from YouTube)</span>
@@ -38,11 +40,6 @@
             <label class="form-label" for="{{ form.title.id_for_label }}">{{ form.title.label }}</label>
             {{ form.title }}
             {% for err in form.title.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
-            <div class="mt-2">
-              <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ai-description">
-                AI write description
-              </button>
-            </div>
           </div>
           <div class="mb-3">
             <label class="form-label" for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
@@ -131,6 +128,7 @@
 
   var urlAutofill = "{% url 'accounts:video_youtube_autofill' %}";
   var urlAi = "{% url 'accounts:video_ai_description' %}";
+  var urlAiTitle = "{% url 'accounts:video_ai_title' %}";
 
   document.getElementById('btn-youtube-autofill').addEventListener('click', function () {
     var btn = this;
@@ -227,6 +225,45 @@
         }
         if (field('description')) field('description').value = data.description || '';
         showAlert('success', 'Description updated. Review before saving.');
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        var extra = err && err.message ? ' ' + err.message : '';
+        showAlert('danger', 'Network error while contacting the server.' + extra);
+      });
+  });
+
+  var btnAiTitle = document.getElementById('btn-ai-title');
+  if (btnAiTitle) btnAiTitle.addEventListener('click', function () {
+    var btn = this;
+    clearAlerts();
+    btn.disabled = true;
+    fetch(urlAiTitle, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken()
+      },
+      body: JSON.stringify({
+        title: (field('title') && field('title').value) || '',
+        youtube_description: (field('youtube_description') && field('youtube_description').value) || '',
+        transcript: (field('transcript') && field('transcript').value) || ''
+      })
+    }).then(function (r) {
+      return r.text().then(function (text) {
+        return { ok: r.ok, status: r.status, data: parseJsonResponse(r, text) };
+      });
+    })
+      .then(function (res) {
+        btn.disabled = false;
+        var data = res.data;
+        if (!data.success) {
+          showAlert('warning', data.error || 'AI title rewrite could not be completed.');
+          return;
+        }
+        if (field('title')) field('title').value = data.title || '';
+        showAlert('success', 'Title updated. Review before saving.');
       })
       .catch(function (err) {
         btn.disabled = false;

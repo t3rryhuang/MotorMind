@@ -41,6 +41,11 @@ class Question(models.Model):
         help_text="Optional jump-back point in the training video (seconds).",
     )
     order = models.PositiveIntegerField(default=0)
+    source_refs = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Citation ids from reading context (e.g. B1, V1) for AI-assisted questions.",
+    )
 
     class Meta:
         ordering = ["order", "pk"]

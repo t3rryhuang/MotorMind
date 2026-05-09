@@ -1,7 +1,9 @@
 import json
+import logging
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Prefetch
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,6 +17,7 @@ from ar_tasks.models import ARTask, ARTaskStep
 from courses.models import Course, TrainingVideo, VideoSection
 from quizzes.models import Question, Quiz
 from quizzes.quiz_editor_save import QuizEditorSaveError, quiz_to_editor_payload, save_quiz_from_payload
+from quizzes.services.ai_quiz_suggestions import get_quiz_ai_gate
 
 from .forms import (
     AnswerChoiceForm,
@@ -29,6 +32,8 @@ from .forms import (
 )
 from .mixins import TeacherRequiredMixin
 from .models import Profile
+
+logger = logging.getLogger(__name__)
 
 
 def user_can_manage_course(user, course) -> bool:
@@ -47,6 +52,35 @@ def _teacher_course_queryset(user):
     if not (user.is_superuser or user.is_staff):
         qs = qs.filter(created_by=user)
     return qs
+
+
+def _refresh_or_reingest_resource_after_course_link(resource_id: int) -> None:
+    """
+    After Resource.courses changes, refresh Chroma metadata or re-ingest if needed.
+    """
+    try:
+        from resources.models import Resource, ResourceIngestionJob
+        from resources.services.ingestion import ingest_resource
+        from resources.services.vector_store import refresh_resource_chunk_course_metadata
+    except ImportError:
+        return
+
+    resource = Resource.objects.prefetch_related("courses").get(pk=resource_id)
+    n = refresh_resource_chunk_course_metadata(resource)
+    if (
+        resource.status == Resource.Status.INGESTED
+        and int(resource.chunk_count or 0) > 0
+        and n == 0
+    ):
+        job = ResourceIngestionJob.objects.create(
+            resource=resource,
+            status=ResourceIngestionJob.Status.QUEUED,
+            message="Re-ingest to sync course metadata",
+        )
+        try:
+            ingest_resource(resource.id, job.id)
+        except Exception as exc:
+            logger.warning("Re-ingest after course link failed: %s", exc)
 
 
 def user_can_use_global_video_tools(user) -> bool:
@@ -123,6 +157,92 @@ class CourseHubView(TeacherRequiredMixin, UpdateView):
         )
         ctx["ar_tasks"] = course.ar_tasks.order_by("pk")
         ctx["cancel_url"] = reverse("accounts:admin_panel")
+        ctx["resources_module_available"] = False
+        ctx["linked_resources"] = []
+        ctx["available_resources"] = []
+        ctx["linked_book_resources"] = []
+        try:
+            from resources.models import Resource
+
+            ctx["resources_module_available"] = True
+            ctx["linked_resources"] = (
+                Resource.objects.filter(courses=course)
+                .prefetch_related("courses")
+                .order_by("title")
+            )
+            ctx["available_resources"] = (
+                Resource.objects.exclude(courses=course)
+                .filter(
+                    status__in=[
+                        Resource.Status.UPLOADED,
+                        Resource.Status.INGESTED,
+                        Resource.Status.FAILED,
+                    ]
+                )
+                .order_by("title")
+            )
+            ctx["linked_book_resources"] = list(
+                ctx["linked_resources"].filter(
+                    resource_type=Resource.ResourceType.BOOK,
+                )
+            )
+        except ImportError:
+            pass
+        try:
+            from study_content.models import CourseReadingContext, CourseReadingPage
+
+            ctx["study_content_enabled"] = True
+            page = CourseReadingPage.objects.filter(course=course).first()
+            ctx["course_reading_page"] = page
+            latest_ctx = CourseReadingContext.objects.filter(course=course).order_by("-pk").first()
+            ctx["reading_chunk_count"] = (
+                latest_ctx.source_chunks.count() if latest_ctx else 0
+            )
+            reading_latest = (
+                list(
+                    latest_ctx.source_chunks.select_related("resource").order_by(
+                        "citation_label", "pk"
+                    )
+                )
+                if latest_ctx
+                else []
+            )
+            ctx["reading_latest_chunks"] = reading_latest
+            ctx["reading_chunks_preview"] = [
+                {
+                    "label": c.citation_label or "",
+                    "resource_title": (c.resource_title or c.source_title or "")[:200],
+                    "author": (c.author or "")[:200],
+                    "page_number": c.page_number,
+                    "score": round(float(c.score), 4)
+                    if c.score is not None
+                    else None,
+                    "snippet": (c.chunk_text or "")[:240],
+                    "full_text": c.chunk_text or "",
+                    "section_title": (
+                        ((c.metadata or {}).get("section_title") or "")[:200]
+                        if isinstance(c.metadata, dict)
+                        else ""
+                    ),
+                }
+                for c in reading_latest
+            ]
+            if page and (page.content_html or "").strip():
+                if page.is_teacher_edited:
+                    ctx["reading_status"] = "Edited"
+                else:
+                    ctx["reading_status"] = "Generated"
+            else:
+                ctx["reading_status"] = "Not generated"
+            ctx["reading_updated"] = getattr(page, "updated_at", None) if page else None
+        except ImportError:
+            ctx["study_content_enabled"] = False
+            ctx["course_reading_page"] = None
+            ctx["reading_chunk_count"] = 0
+            ctx["reading_status"] = ""
+            ctx["reading_updated"] = None
+            ctx["reading_latest_chunks"] = []
+            ctx["reading_chunks_preview"] = []
         return ctx
 
     def form_valid(self, form):
@@ -250,23 +370,6 @@ class QuizCreateView(BaseManageCreateView):
 
     def get_success_url(self):
         return reverse("accounts:admin_panel")
-
-
-class NestedQuizCreateView(NestedCourseManageMixin, BaseManageCreateView):
-    form_class = QuizForm
-    template_name = "accounts/manage/quiz_form.html"
-
-    def get_initial(self):
-        return {**super().get_initial(), "course": self.nested_course_id}
-
-    def get_form(self, form_class=None):
-        form = super().get_form(form_class)
-        form.fields["course"].queryset = Course.objects.filter(pk=self.nested_course_id)
-        return form
-
-    def form_valid(self, form):
-        messages.success(self.request, "Quiz added.")
-        return super().form_valid(form)
 
 
 class QuestionCreateView(BaseManageCreateView):
@@ -444,9 +547,183 @@ def video_ai_description_api(request):
 
 
 @login_required
+@require_POST
+def video_ai_title_api(request):
+    from courses.services.ai_description import generate_educational_title
+
+    if not user_can_use_global_video_tools(request.user):
+        return JsonResponse({"success": False, "error": "Forbidden"}, status=403)
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+    out = generate_educational_title(
+        title=(body.get("title") or ""),
+        transcript=(body.get("transcript") or ""),
+        youtube_description=(body.get("youtube_description") or ""),
+    )
+    return JsonResponse(out)
+
+
+@login_required
+@require_POST
+def course_resource_attach(request, course_id):
+    course = get_object_or_404(_teacher_course_queryset(request.user), pk=course_id)
+    if not user_can_manage_course(request.user, course):
+        return HttpResponseForbidden()
+    raw_rid = (request.POST.get("resource_id") or "").strip()
+    if not raw_rid.isdigit():
+        messages.error(request, "Choose a resource to attach.")
+        return redirect("accounts:manage_course", pk=course_id)
+    try:
+        from resources.models import Resource
+    except ImportError:
+        messages.error(request, "Resources are not available in this deployment.")
+        return redirect("accounts:manage_course", pk=course_id)
+
+    resource = get_object_or_404(Resource, pk=int(raw_rid))
+    resource.courses.add(course)
+    _refresh_or_reingest_resource_after_course_link(resource.pk)
+    messages.success(request, f"Attached “{resource.title}” to this course.")
+    return redirect("accounts:manage_course", pk=course_id)
+
+
+@login_required
+@require_POST
+def course_resource_detach(request, course_id, resource_id):
+    course = get_object_or_404(_teacher_course_queryset(request.user), pk=course_id)
+    if not user_can_manage_course(request.user, course):
+        return HttpResponseForbidden()
+    try:
+        from resources.models import Resource
+    except ImportError:
+        messages.error(request, "Resources are not available in this deployment.")
+        return redirect("accounts:manage_course", pk=course_id)
+
+    resource = get_object_or_404(Resource, pk=resource_id)
+    if not resource.courses.filter(pk=course.pk).exists():
+        messages.warning(request, "That resource is not linked to this course.")
+        return redirect("accounts:manage_course", pk=course_id)
+    resource.courses.remove(course)
+    _refresh_or_reingest_resource_after_course_link(resource.pk)
+    messages.success(
+        request,
+        f"Detached “{resource.title}” from this course. The resource file was not deleted.",
+    )
+    return redirect("accounts:manage_course", pk=course_id)
+
+
+@ensure_csrf_cookie
+@login_required
+@require_http_methods(["GET", "POST"])
+def course_quiz_create(request, course_id):
+    """Create a new quiz using the same editor as edit mode (single POST saves all)."""
+    course = get_object_or_404(
+        _teacher_course_queryset(request.user).prefetch_related("videos"),
+        pk=course_id,
+    )
+    if not user_can_manage_course(request.user, course):
+        return HttpResponseForbidden()
+
+    section_options = [
+        {"id": s.pk, "label": f"{s.video.title}: {s.title}"}
+        for s in VideoSection.objects.filter(video__course_id=course.pk)
+        .select_related("video")
+        .order_by("video_id", "order", "pk")
+    ]
+    quiz_initial = {"title": "", "description": "", "pass_mark": 70, "questions": []}
+
+    if request.method == "POST":
+        raw = request.POST.get("quiz_payload", "")
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            messages.error(request, "Invalid JSON payload.")
+        else:
+            try:
+                with transaction.atomic():
+                    quiz = Quiz.objects.create(
+                        course=course,
+                        title="Untitled",
+                        description="",
+                        pass_mark=70,
+                    )
+                    save_quiz_from_payload(quiz, payload, course.pk)
+                messages.success(request, "Quiz created.")
+                return redirect(
+                    "accounts:course_quiz_edit",
+                    course_id=course.pk,
+                    quiz_id=quiz.pk,
+                )
+            except QuizEditorSaveError as exc:
+                messages.error(request, str(exc))
+                quiz_initial = payload
+
+    return render(
+        request,
+        "quizzes/quiz_editor.html",
+        {
+            "course": course,
+            "quiz": None,
+            "section_options": section_options,
+            "quiz_initial": quiz_initial,
+            "preview_url": "#",
+            "back_url": reverse("accounts:manage_course", kwargs={"pk": course.pk}),
+            "editor_heading": "Create quiz",
+            "editor_mode": "create",
+            "ai_suggestions_url": reverse(
+                "accounts:course_quiz_ai_suggestions",
+                kwargs={"course_id": course.pk},
+            ),
+            "quiz_ai_gate": get_quiz_ai_gate(course),
+        },
+    )
+
+
+@login_required
+@require_POST
+def course_quiz_ai_suggestions(request, course_id):
+    course = get_object_or_404(_teacher_course_queryset(request.user), pk=course_id)
+    if not user_can_manage_course(request.user, course):
+        return JsonResponse({"success": False, "error": "Forbidden"}, status=403)
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+    vid = body.get("video_id")
+    video_id = None
+    if vid is not None and str(vid).strip() not in ("", "null", "None"):
+        try:
+            video_id = int(vid)
+        except (TypeError, ValueError):
+            video_id = None
+    mode = (body.get("question_count_mode") or "auto").strip().lower()
+    qc = body.get("question_count")
+    qcount = int(qc) if qc is not None and str(qc).strip().isdigit() else None
+    try:
+        from quizzes.services.ai_quiz_suggestions import generate_quiz_question_suggestions
+    except ImportError:
+        return JsonResponse(
+            {"success": False, "questions": [], "error": "Quiz AI module unavailable."},
+            status=501,
+        )
+    out = generate_quiz_question_suggestions(
+        course,
+        video_id=video_id,
+        question_count_mode=mode,
+        question_count=qcount,
+    )
+    status = 200 if out.get("success") else 400
+    return JsonResponse(out, status=status)
+
+
+@login_required
 @require_http_methods(["GET", "POST"])
 def course_quiz_edit(request, course_id, quiz_id):
-    course = get_object_or_404(_teacher_course_queryset(request.user), pk=course_id)
+    course = get_object_or_404(
+        _teacher_course_queryset(request.user).prefetch_related("videos"),
+        pk=course_id,
+    )
     if not user_can_manage_course(request.user, course):
         return HttpResponseForbidden()
 
@@ -498,6 +775,13 @@ def course_quiz_edit(request, course_id, quiz_id):
             "quiz_initial": quiz_initial,
             "preview_url": reverse("quizzes:quiz_take", kwargs={"quiz_id": quiz.pk}),
             "back_url": reverse("accounts:manage_course", kwargs={"pk": course.pk}),
+            "editor_heading": f"Edit {quiz.title}",
+            "editor_mode": "edit",
+            "ai_suggestions_url": reverse(
+                "accounts:course_quiz_ai_suggestions",
+                kwargs={"course_id": course.pk},
+            ),
+            "quiz_ai_gate": get_quiz_ai_gate(course),
         },
     )
 

@@ -41,6 +41,21 @@ urlpatterns = [
         name="video_ai_description",
     ),
     path(
+        "admin-panel/videos/ai-title/",
+        manage_views.video_ai_title_api,
+        name="video_ai_title",
+    ),
+    path(
+        "admin-panel/manage/course/<int:course_id>/resources/attach/",
+        manage_views.course_resource_attach,
+        name="course_resource_attach",
+    ),
+    path(
+        "admin-panel/manage/course/<int:course_id>/resources/<int:resource_id>/detach/",
+        manage_views.course_resource_detach,
+        name="course_resource_detach",
+    ),
+    path(
         "admin-panel/manage/course/add/",
         manage_views.CourseCreateView.as_view(),
         name="manage_course_add",
@@ -56,9 +71,14 @@ urlpatterns = [
         name="manage_course_section_add",
     ),
     path(
-        "admin-panel/manage/course/<int:course_pk>/quizzes/add/",
-        manage_views.NestedQuizCreateView.as_view(),
+        "admin-panel/manage/course/<int:course_id>/quizzes/add/",
+        manage_views.course_quiz_create,
         name="manage_course_quiz_add",
+    ),
+    path(
+        "admin-panel/manage/course/<int:course_id>/quizzes/ai-suggestions/",
+        manage_views.course_quiz_ai_suggestions,
+        name="course_quiz_ai_suggestions",
     ),
     path(
         "admin-panel/manage/course/<int:course_pk>/questions/add/",

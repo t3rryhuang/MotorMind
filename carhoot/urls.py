@@ -11,6 +11,7 @@ urlpatterns = [
     path("", include("quizzes.urls")),
     path("", include("ar_tasks.urls")),
     path("admin-panel/resources/", include("resources.urls")),
+    path("admin-panel/", include("study_content.urls")),
 ]
 
 if settings.DEBUG:

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Edit reading — {{ course.title }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'accounts:admin_panel' %}">Admin panel</a></li>
+    <li class="breadcrumb-item"><a href="{{ back_url }}">{{ course.title }}</a></li>
+    <li class="breadcrumb-item active">Reading editor</li>
+  </ol>
+</nav>
+
+<h1 class="h3 mb-3">Course reading editor</h1>
+<p class="text-muted small">Edit HTML for the student-facing Reading section. Preview uses the same diagram pipeline as the public course page. <!-- TODO: drag-and-drop diagram blocks in preview. --></p>
+
+<form method="post" id="reading-editor-form" class="mb-4">
+  {% csrf_token %}
+  <div class="mb-3">
+    <label class="form-label" for="id_title">Title</label>
+    <input type="text" class="form-control" name="title" id="id_title" value="{{ page.title }}" maxlength="255">
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <label class="form-label" for="id_content_html">HTML content</label>
+      <textarea class="form-control font-monospace small" name="content_html" id="id_content_html" rows="22" style="min-height: 420px;">{{ page.content_html }}</textarea>
+      <div class="btn-toolbar flex-wrap gap-1 mt-2" role="toolbar">
+        <span class="small text-muted align-self-center me-2">Insert diagram block:</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-diagram-wrap="float-end">Float right</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-diagram-wrap="float-start">Float left</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-diagram-wrap="d-block mx-auto">Full width</button>
+      </div>
+      <p class="small text-muted mt-2 mb-0">Use <code>data-diagram-id</code> matching an id in the diagrams JSON (e.g. <code>diagram_1</code>).</p>
+    </div>
+    <div class="col-lg-6">
+      <label class="form-label">Live preview</label>
+      <div class="border rounded p-3 bg-light reading-preview-host" style="min-height: 420px; max-height: 70vh; overflow: auto;">
+        <div id="reading-preview-body" class="reading-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-lg-6">
+      <label class="form-label" for="id_citations_json">Citations (JSON)</label>
+      <textarea class="form-control font-monospace small" name="citations_json" id="id_citations_json" rows="8">{{ citations_json }}</textarea>
+    </div>
+    <div class="col-lg-6">
+      <label class="form-label" for="id_diagrams_json">Diagrams (JSON)</label>
+      <textarea class="form-control font-monospace small" name="diagrams_json" id="id_diagrams_json" rows="8">{{ diagrams_json }}</textarea>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-2">
+    <div class="col-lg-6">
+      <div class="card border-0 bg-light">
+        <div class="card-header fw-semibold small">Saved source chunks (latest retrieval)</div>
+        <div class="card-body small" style="max-height: 220px; overflow: auto;">
+          {% if source_chunks %}
+            <ul class="mb-0">
+              {% for ch in source_chunks %}
+                <li><strong>{{ ch.citation_label }}</strong> — {{ ch.resource_title|default:ch.source_title|truncatewords:8 }} (score {{ ch.score|floatformat:3 }})</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-muted mb-0">No chunks yet. Use “Find top 5 chunks” on the course editor.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 d-flex flex-wrap gap-2">
+    <button type="submit" class="btn btn-primary">Save reading</button>
+    <a class="btn btn-outline-secondary" href="{{ back_url }}">Back to course editor</a>
+    <a class="btn btn-outline-primary" href="{% url 'study_content:reading_preview' course.pk %}" target="_blank" rel="noopener">Preview as student</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+(function () {
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+  var ta = document.getElementById('id_content_html');
+  var prev = document.getElementById('reading-preview-body');
+  var diaTa = document.getElementById('id_diagrams_json');
+
+  function parseDiagrams() {
+    try {
+      return JSON.parse((diaTa && diaTa.value) ? diaTa.value : '[]');
+    } catch (e) { return []; }
+  }
+
+  function applyDiagrams(container) {
+    var diagrams = parseDiagrams();
+    if (!container || !diagrams.length) return;
+    container.querySelectorAll('[data-diagram-id]').forEach(function (slot) {
+      var id = slot.getAttribute('data-diagram-id');
+      var d = diagrams.find(function (x) { return x && x.id === id; });
+      if (!d || !d.code) return;
+      var pre = document.createElement('pre');
+      pre.className = 'mermaid';
+      pre.textContent = d.code;
+      slot.innerHTML = '';
+      slot.appendChild(pre);
+    });
+    try { mermaid.run({ querySelector: '#reading-preview-body .mermaid' }); } catch (e) {}
+  }
+
+  function runPreview() {
+    if (!ta || !prev) return;
+    prev.innerHTML = ta.value || '';
+    applyDiagrams(prev);
+  }
+
+  var t;
+  function bindTa(el) {
+    if (!el) return;
+    el.addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(runPreview, 250);
+    });
+  }
+  bindTa(ta);
+  bindTa(diaTa);
+  runPreview();
+
+  document.querySelectorAll('[data-diagram-wrap]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var wrap = btn.getAttribute('data-diagram-wrap');
+      var id = prompt('Diagram id (e.g. diagram_1):', 'diagram_1');
+      if (!id) return;
+      var snippet = '<div data-diagram-id="' + id.replace(/"/g, '') + '" class="reading-diagram ' + wrap + '"></div>';
+      ta.value += (ta.value && !ta.value.endsWith('\n') ? '\n' : '') + snippet + '\n';
+      runPreview();
+    });
+  });
+})();
+</script>
+{% endblock %}

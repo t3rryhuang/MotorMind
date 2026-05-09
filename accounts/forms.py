@@ -49,9 +49,9 @@ class TrainingVideoForm(forms.ModelForm):
             "transcript_source": forms.HiddenInput(),
         }
         help_texts = {
-            "video_url": "Paste a YouTube URL first, then use Auto-fill for title, thumbnail, and captions.",
+            "video_url": "Paste a YouTube URL, then use the buttons below for auto-fill, AI title, or AI description.",
             "youtube_description": "Optional. Used for “AI write description”; oEmbed does not include the full YouTube description yet.",
-            "transcript": "Filled from YouTube captions when you use Auto-fill (not AI-generated).",
+            "transcript": "Filled from YouTube captions when you use Auto-fill; text is reformatted into readable paragraphs (not AI).",
         }
 
 
@@ -79,9 +79,9 @@ class TrainingVideoEditForm(forms.ModelForm):
             "transcript_source": forms.HiddenInput(),
         }
         help_texts = {
-            "video_url": "Paste a YouTube URL first, then use Auto-fill for title, thumbnail, and captions.",
+            "video_url": "Paste a YouTube URL, then use the buttons below for auto-fill, AI title, or AI description.",
             "youtube_description": "Optional. Used for “AI write description”; oEmbed does not include the full YouTube description yet.",
-            "transcript": "Filled from YouTube captions when you use Auto-fill (not AI-generated).",
+            "transcript": "Filled from YouTube captions when you use Auto-fill; text is reformatted into readable paragraphs (not AI).",
         }
 
 

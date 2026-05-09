@@ -10,6 +10,10 @@ import logging
 from typing import Any
 import requests
 
+from courses.services.transcript_formatting import (
+    format_transcript_for_reading,
+    format_transcript_segments,
+)
 from courses.utils import extract_youtube_video_id as _extract_from_utils
 
 logger = logging.getLogger(__name__)
@@ -216,7 +220,11 @@ def build_youtube_autofill_response(video_url: str) -> dict[str, Any]:
     youtube_description = get_youtube_description_ytdlp(url)
 
     tr = get_youtube_transcript(url)
-    transcript = tr.get("transcript") or ""
+    segments = tr.get("segments") or []
+    if segments:
+        transcript = format_transcript_segments(segments)
+    else:
+        transcript = format_transcript_for_reading(tr.get("transcript") or "")
     transcript_source_code = tr.get("source") or ""
     transcript_label = tr.get("transcript_source_label") or ""
 

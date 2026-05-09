@@ -135,3 +135,63 @@ class AiDescriptionServiceTests(TestCase):
             r = generate_video_description("Title", "yd", "tr")
         self.assertFalse(r["success"])
         self.assertIn("GOOGLE_API_KEY", r["error"])
+
+
+class AiTitleServiceTests(TestCase):
+    def test_missing_key_returns_message(self):
+        from courses.services.ai_description import generate_educational_title
+
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": ""}):
+            r = generate_educational_title("Long #hashtag title", transcript="x", youtube_description="y")
+        self.assertFalse(r["success"])
+        self.assertIn("GOOGLE_API_KEY", r["error"])
+
+
+class TranscriptFormattingTests(TestCase):
+    def test_strips_music_tokens(self):
+        from courses.services.transcript_formatting import format_transcript_for_reading
+
+        raw = "[music] Hello there. How are you? >> [Music] Fine thanks."
+        out = format_transcript_for_reading(raw)
+        self.assertNotIn("[music]", out.lower())
+        self.assertIn("Hello there", out)
+
+    def test_format_segments_joins_and_formats(self):
+        from courses.services.transcript_formatting import format_transcript_segments
+
+        segs = [
+            {"text": "First sentence here."},
+            {"text": "Second sentence follows."},
+        ]
+        out = format_transcript_segments(segs)
+        self.assertIn("First sentence", out)
+        self.assertIn("Second sentence", out)
+        self.assertIn("First sentence here.", out)
+
+
+class YouTubeAutofillFormattedTranscriptTests(TestCase):
+    @patch("courses.services.youtube.get_youtube_transcript")
+    @patch("courses.services.youtube.get_youtube_oembed_metadata")
+    def test_autofill_formats_segment_transcript(self, mock_oembed, mock_tr):
+        from courses.services.youtube import build_youtube_autofill_response
+
+        mock_oembed.return_value = {
+            "title": "Demo title",
+            "author_name": "Channel",
+            "thumbnail_url": "https://i.ytimg.com/vi/x/hqdefault.jpg",
+            "raw_error": "",
+        }
+        mock_tr.return_value = {
+            "transcript": "",
+            "segments": [
+                {"start": 0.0, "duration": 1.0, "text": "Hello."},
+                {"start": 1.0, "duration": 1.0, "text": "World."},
+            ],
+            "source": "youtube_captions_manual_en",
+            "transcript_source_label": "YouTube captions",
+            "error": "",
+        }
+        out = build_youtube_autofill_response("https://youtu.be/n7EGz1Kn3pM")
+        self.assertIn("Hello", out["transcript"])
+        self.assertIn("World", out["transcript"])
+        self.assertIn("Hello.", out["transcript"])

@@ -24,12 +24,33 @@ class CourseDetailView(LoginRequiredMixin, DetailView):
         return (
             Course.objects.prefetch_related(
                 "videos",
+                "videos__sections",
                 "quizzes",
                 "ar_tasks",
             )
             .select_related("created_by")
             .all()
         )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["course_reading_page"] = None
+        ctx["course_reading_html"] = ""
+        ctx["course_reading_title"] = ""
+        ctx["course_reading_diagrams_json"] = "[]"
+        try:
+            from study_content.models import CourseReadingPage
+            from study_content.utils_html import sanitize_reading_html
+
+            page = CourseReadingPage.objects.filter(course=self.object).first()
+            if page and (page.content_html or "").strip():
+                ctx["course_reading_page"] = page
+                ctx["course_reading_html"] = sanitize_reading_html(page.content_html)
+                ctx["course_reading_title"] = page.title or f"{self.object.title} reading"
+                ctx["course_reading_diagrams"] = page.diagrams or []
+        except ImportError:
+            pass
+        return ctx
 
 
 def parse_video_start_seconds(request_get):

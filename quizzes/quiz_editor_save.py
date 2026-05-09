@@ -94,6 +94,11 @@ def save_quiz_from_payload(quiz: Quiz, payload: dict, course_id: int) -> None:
         q_obj.timestamp_seconds = ts_val
         q_obj.section = section
         q_obj.order = _coerce_int(qd.get("order"), default=order_idx, minimum=0)
+        refs = qd.get("source_refs")
+        if isinstance(refs, list):
+            q_obj.source_refs = [str(x).strip() for x in refs if str(x).strip()][:20]
+        else:
+            q_obj.source_refs = []
         q_obj.save()
         kept_question_pks.append(q_obj.pk)
 
@@ -141,6 +146,7 @@ def quiz_to_editor_payload(quiz: Quiz) -> dict:
                 "timestamp_seconds": q.timestamp_seconds,
                 "section_id": q.section_id,
                 "order": q.order,
+                "source_refs": list(q.source_refs or []),
                 "answers": [
                     {
                         "id": c.pk,

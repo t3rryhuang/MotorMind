@@ -7,7 +7,7 @@ import logging
 import requests
 from django.core.cache import cache
 
-from resources.services.isbn import normalise_isbn
+from resources.services.isbn import clean_isbn, normalise_isbn
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,26 @@ _TTL_MISS = 60 * 60 * 24  # 1 day — avoid hammering OL for invalid ISBNs
 
 def openlibrary_cover_url(norm_isbn: str, size: str = "L") -> str:
     return f"https://covers.openlibrary.org/b/isbn/{norm_isbn}-{size}.jpg"
+
+
+def resource_thumbnail_cover_url(resource) -> str:
+    """
+    URL for list/thumbnail previews without probing Open Library.
+
+    Uses persisted cover when present; otherwise a small Open Library image
+    with default=true so missing covers still show a neutral placeholder.
+    """
+    from resources.models import Resource
+
+    if not isinstance(resource, Resource):
+        return ""
+    stored = (resource.cover_image_url or "").strip()
+    if stored:
+        return stored
+    norm = normalise_isbn(clean_isbn(resource.isbn or ""))
+    if not norm:
+        return ""
+    return f"https://covers.openlibrary.org/b/isbn/{norm}-S.jpg?default=true"
 
 
 def _probe_cover_exists(url: str) -> bool:
