@@ -1,6 +1,11 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 
+from courses.course_icons import (
+    COURSE_ICON_CHOICES,
+    COURSE_ICON_SLUGS,
+    DEFAULT_COURSE_ICON,
+)
 from courses.models import Course, TrainingVideo, VideoSection
 from quizzes.models import AnswerChoice, Question, Quiz
 
@@ -15,13 +20,32 @@ class BootstrapAuthenticationForm(AuthenticationForm):
 
 
 class CourseForm(forms.ModelForm):
+    icon_name = forms.ChoiceField(
+        label="Course icon",
+        choices=COURSE_ICON_CHOICES,
+        initial=DEFAULT_COURSE_ICON,
+        required=True,
+    )
+
     class Meta:
         model = Course
-        fields = ("title", "description")
+        fields = ("icon_name", "title", "description")
         widgets = {
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        raw = (getattr(self.instance, "icon_name", None) or "").strip()
+        if raw not in COURSE_ICON_SLUGS:
+            self.initial["icon_name"] = DEFAULT_COURSE_ICON
+
+    def clean_icon_name(self):
+        val = (self.cleaned_data.get("icon_name") or "").strip()
+        if val not in COURSE_ICON_SLUGS:
+            return DEFAULT_COURSE_ICON
+        return val
 
 
 class TrainingVideoForm(forms.ModelForm):

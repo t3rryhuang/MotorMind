@@ -55,7 +55,10 @@
   </ol>
 </nav>
 
-<h1 class="mb-2">{{ course.title }}</h1>
+<h1 class="mb-2 d-flex align-items-center gap-3 flex-wrap">
+  <img src="{% static course.icon_static_path %}" width="56" height="56" class="rounded-circle border shadow-sm flex-shrink-0" alt="">
+  <span class="min-w-0">{{ course.title }}</span>
+</h1>
 <p class="text-muted">{{ course.description }}</p>
 
 {% if featured_video %}

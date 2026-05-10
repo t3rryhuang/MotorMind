@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Multimeter">
+  <defs>
+    <linearGradient id="mmG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFBF66"/><stop offset="100%" style="stop-color:#FF8C00"/>
+    </linearGradient>
+    <linearGradient id="mmG2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#1a1a1a"/><stop offset="100%" style="stop-color:#2d3339"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="54" fill="url(#mmG2)" stroke="url(#mmG)" stroke-width="4"/>
+  <rect x="36" y="40" width="48" height="56" rx="8" fill="#2d3339" stroke="#FFBF66" stroke-width="2"/>
+  <rect x="44" y="50" width="32" height="22" rx="2" fill="#1a1a1a" stroke="#FF8C00" stroke-width="1"/>
+  <path d="M48 88 H72" stroke="#FFBF66" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="52" cy="98" r="3" fill="#FF8C00"/><circle cx="68" cy="98" r="3" fill="#FF8C00"/>
+</svg>

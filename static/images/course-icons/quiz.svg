@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Quiz">
+  <defs>
+    <linearGradient id="qzG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFBF66"/><stop offset="100%" style="stop-color:#FF8C00"/>
+    </linearGradient>
+    <linearGradient id="qzG2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#1a1a1a"/><stop offset="100%" style="stop-color:#2d3339"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="54" fill="url(#qzG2)" stroke="url(#qzG)" stroke-width="4"/>
+  <path d="M48 50 Q60 38 72 50 Q60 62 48 50" fill="none" stroke="#FFBF66" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="54" cy="72" r="4" fill="#FF8C00"/><circle cx="66" cy="72" r="4" fill="#FF8C00"/><circle cx="60" cy="82" r="4" fill="#FFBF66"/>
+</svg>

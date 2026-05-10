@@ -1,10 +1,18 @@
 from django.conf import settings
 from django.db import models
 
+from .course_icons import COURSE_ICON_SLUGS
+
 
 class Course(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    icon_name = models.CharField(
+        max_length=80,
+        blank=True,
+        default="diagnostics",
+        help_text="Basename of SVG under static/images/course-icons/ (no extension).",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -17,6 +25,14 @@ class Course(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def icon_static_path(self) -> str:
+        """Static path relative to STATIC_URL for {% static %}; invalid/blank → default.svg."""
+        slug = (self.icon_name or "").strip()
+        if slug in COURSE_ICON_SLUGS:
+            return f"images/course-icons/{slug}.svg"
+        return "images/course-icons/default.svg"
 
 
 class TrainingVideo(models.Model):

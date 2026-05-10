@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Fuse">
+  <defs>
+    <linearGradient id="fuG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFBF66"/><stop offset="100%" style="stop-color:#FF8C00"/>
+    </linearGradient>
+    <linearGradient id="fuG2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#1a1a1a"/><stop offset="100%" style="stop-color:#2d3339"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="54" fill="url(#fuG2)" stroke="url(#fuG)" stroke-width="4"/>
+  <rect x="34" y="52" width="52" height="20" rx="4" fill="#2d3339" stroke="#FFBF66" stroke-width="2"/>
+  <rect x="40" y="56" width="10" height="12" rx="1" fill="#FF8C00"/><rect x="70" y="56" width="10" height="12" rx="1" fill="#FF8C00"/>
+  <path d="M54 62 H66" stroke="#FFBF66" stroke-width="2"/>
+</svg>

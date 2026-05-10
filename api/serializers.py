@@ -146,15 +146,18 @@ class ARTaskDetailSerializer(serializers.ModelSerializer):
 
 
 class CourseListSerializer(serializers.ModelSerializer):
+    icon_static_path = serializers.ReadOnlyField()
+
     class Meta:
         model = Course
-        fields = ("id", "title", "description", "created_at")
+        fields = ("id", "title", "description", "icon_name", "icon_static_path", "created_at")
 
 
 class CourseDetailSerializer(serializers.ModelSerializer):
     videos = TrainingVideoDetailSerializer(many=True, read_only=True)
     quizzes = QuizListSerializer(many=True, read_only=True)
     ar_tasks = ARTaskListSerializer(many=True, read_only=True)
+    icon_static_path = serializers.ReadOnlyField()
 
     class Meta:
         model = Course
@@ -162,6 +165,8 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "icon_name",
+            "icon_static_path",
             "created_at",
             "videos",
             "quizzes",

@@ -324,3 +324,23 @@ class VideoSectionsSuggestionsTests(TestCase):
         self.assertIsNotNone(err)
         self.assertIn("already", (err or "").lower())
         self.assertEqual(v.sections.count(), 1)
+
+
+class CourseIconStaticPathTests(TestCase):
+    def test_valid_slug_path(self):
+        from django.contrib.auth import get_user_model
+
+        u = get_user_model().objects.create_user(username="ic", password="x")
+        c = Course.objects.create(
+            title="T", description="", created_by=u, icon_name="fuse"
+        )
+        self.assertEqual(c.icon_static_path, "images/course-icons/fuse.svg")
+
+    def test_invalid_slug_falls_back_to_default(self):
+        from django.contrib.auth import get_user_model
+
+        u = get_user_model().objects.create_user(username="ic2", password="x")
+        c = Course.objects.create(
+            title="T2", description="", created_by=u, icon_name="not-a-real-icon"
+        )
+        self.assertEqual(c.icon_static_path, "images/course-icons/default.svg")

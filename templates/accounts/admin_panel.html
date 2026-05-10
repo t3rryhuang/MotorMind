@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Teacher Admin Panel — MotorMind{% endblock %}
 {% block main_classes %}container-fluid px-3 px-sm-4 px-xl-5 pb-5 pt-4{% endblock %}
 {% block content %}
@@ -42,7 +43,9 @@
             {% with c=row.course %}
             <li class="mb-2 pb-2 border-bottom border-light">
               <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-                <div>
+                <div class="d-flex align-items-start gap-2 min-w-0">
+                  <img src="{% static c.icon_static_path %}" width="28" height="28" class="rounded-circle border flex-shrink-0 mt-1" alt="">
+                  <div class="min-w-0">
                   <a class="link-dealer fw-semibold" href="{% if row.can_manage %}{% url 'accounts:manage_course' c.pk %}{% else %}{% url 'courses:course_detail' c.pk %}{% endif %}">{{ c.title }}</a>
                   <div class="text-muted">
                     Owner:
@@ -51,6 +54,7 @@
                     {% else %}
                       No owner
                     {% endif %}
+                  </div>
                   </div>
                 </div>
                 <span class="text-nowrap d-flex gap-1 align-items-center">

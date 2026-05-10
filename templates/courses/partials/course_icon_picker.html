@@ -1,0 +1,80 @@
+{% load static %}
+{# Bound field `field` = CourseForm.icon_name. #}
+<div class="mb-4 course-icon-picker-wrap" id="course-icon-picker-{{ field.auto_id }}">
+  <div class="form-label mb-2">{{ field.label }}</div>
+  <div class="d-flex align-items-center gap-3 mb-3 p-3 rounded border bg-light">
+    <div class="small text-muted text-nowrap">Current</div>
+    <img src="{% static field.form.instance.icon_static_path %}" width="64" height="64" class="rounded-circle border shadow-sm course-icon-preview" alt="">
+  </div>
+  <div class="course-icon-picker-grid" role="radiogroup" aria-label="{{ field.label }}">
+    {% for value, choice_label in field.field.choices %}
+      {% with rel_path='images/course-icons/'|add:value|add:'.svg' %}
+      <label class="course-icon-picker-item{% if field.value == value or not field.value and value == 'diagnostics' %} is-selected{% endif %}">
+        <input type="radio" name="{{ field.html_name }}" value="{{ value|escape }}"
+               class="course-icon-picker-input" autocomplete="off"
+               {% if field.value == value or not field.value and value == 'diagnostics' %}checked{% endif %}
+               data-preview-url="{% static rel_path %}">
+        <span class="course-icon-picker-visual">
+          <img src="{% static rel_path %}" width="52" height="52" class="rounded-circle border" alt="">
+        </span>
+        <span class="course-icon-picker-label small text-center">{{ choice_label }}</span>
+      </label>
+      {% endwith %}
+    {% endfor %}
+  </div>
+  {% for err in field.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+  <style>
+  #course-icon-picker-{{ field.auto_id }} .course-icon-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 0.65rem;
+  }
+  #course-icon-picker-{{ field.auto_id }} .course-icon-picker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0.5rem 0.35rem;
+    border: 2px solid #e8e8ec;
+    border-radius: 0.65rem;
+    cursor: pointer;
+    background: #fff;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  #course-icon-picker-{{ field.auto_id }} .course-icon-picker-item:hover {
+    border-color: #ffb366;
+  }
+  #course-icon-picker-{{ field.auto_id }} .course-icon-picker-item.is-selected {
+    border-color: #ff8c00;
+    box-shadow: 0 0 0 1px rgba(255, 140, 0, 0.25);
+  }
+  #course-icon-picker-{{ field.auto_id }} .course-icon-picker-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  #course-icon-picker-{{ field.auto_id }} .course-icon-picker-label {
+    line-height: 1.2;
+    color: #444;
+  }
+  </style>
+  <script>
+  (function () {
+    var root = document.getElementById("course-icon-picker-{{ field.auto_id|escapejs }}");
+    if (!root) return;
+    var preview = root.querySelector(".course-icon-preview");
+    var inputs = root.querySelectorAll(".course-icon-picker-input");
+    function sync() {
+      inputs.forEach(function (inp) {
+        var lab = inp.closest(".course-icon-picker-item");
+        if (lab) lab.classList.toggle("is-selected", inp.checked);
+        if (inp.checked && preview && inp.dataset.previewUrl) preview.src = inp.dataset.previewUrl;
+      });
+    }
+    inputs.forEach(function (inp) { inp.addEventListener("change", sync); });
+    sync();
+  })();
+  </script>
+</div>
