@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "ar_tasks",
     "resources",
     "study_content",
+    "tutor",
     "api",
 ]
 
@@ -93,8 +94,11 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
-STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
+# Leading slash so URLs are always from site root (avoids wrong paths on nested routes).
+STATIC_URL = "/static/"
+STATICFILES_DIRS = [BASE_DIR / "static"]
+# Collected copies for production (`collectstatic`); not used by `runserver` for dev serving.
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -110,6 +114,15 @@ VECTOR_DB_PATH = BASE_DIR / "vector_db"
 CHROMA_COLLECTION_NAME = "carhoot_resources"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- Google Gemini (also read via os.environ in several services) ---
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+GOOGLE_MODEL_NAME = os.environ.get("GOOGLE_MODEL_NAME", "gemma-3-27b-it")
+
+# --- ElevenLabs (text-to-speech for AI tutor only) ---
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "")
+ELEVENLABS_MODEL = os.environ.get("ELEVENLABS_MODEL", "eleven_multilingual_v2")
 
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"

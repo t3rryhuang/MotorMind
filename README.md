@@ -35,6 +35,20 @@ On **Add / Edit training video**, teachers paste a YouTube URL first, then use *
 - **AI write description** calls Google **Generative AI** when **`GOOGLE_API_KEY`** is set in `.env` (from [Google AI Studio](https://aistudio.google.com/app/apikey)). Model name defaults to **`GOOGLE_MODEL_NAME=gemma-3-27b-it`**; override if your project uses another supported model. If the key is missing, the UI shows a clear “not configured” message instead of crashing.
 - **Never commit API keys.** Keep secrets in `.env` (gitignored). If a key was ever exposed in chat or a ticket, **rotate it** in Google Cloud / AI Studio.
 
+### AI Tutor / ElevenLabs (course page)
+
+On **`/courses/<id>/`**, logged-in users see a floating **Talk to tutor** control. They can type (or use the browser **Web Speech API** where supported) to ask questions; the server builds context from the course title/description, reading page (plain text + citations), training video transcripts and section timestamps, the latest saved top reading chunks, quiz questions (including `source_refs` where set), and recent **quiz attempt scores** (pass/fail and percentage — per-question right/wrong is **not** stored yet; the tutor is told that in context).
+
+- **Gemini** (`GOOGLE_API_KEY`, `GOOGLE_MODEL_NAME`) powers tutor **reasoning and text** replies. If the key is missing, the API returns a clear configuration error and typed chat does not call the model.
+- **ElevenLabs** (`ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`) is used **only** for optional **spoken** playback of the assistant reply (`audio/mpeg` as base64 in the JSON response). It is never used for reasoning. If ElevenLabs is not configured, chat still works; warnings may list missing voice/key.
+- **API keys never go to the browser**; all Gemini and ElevenLabs calls are server-side.
+
+See `.env.example` for variable names. After enabling the tutor DB tables:
+
+```bash
+python3 manage.py migrate
+```
+
 After pulling changes that touch `courses.models.TrainingVideo`, always run:
 
 ```bash
@@ -60,6 +74,7 @@ Django admin: http://127.0.0.1:8000/admin/ — create a superuser with `python3 
 - `carhoot/` — project settings and root URLconf
 - `accounts/` — login/logout, dashboard, teacher **admin panel** (courses + resource library; course editor nests videos/sections, quizzes, AR tasks), `Profile` (teacher/student)
 - `courses/` — `Course`, `TrainingVideo`, `VideoSection`, landing page, course/video views
+- `tutor/` — AI tutor conversations/messages; course context + Gemini + optional ElevenLabs TTS
 - `quizzes/` — quiz models, take quiz / results
 - `ar_tasks/` — AR task models, task detail, progress updates (web POST)
 - `resources/` — **Resource library**, ingestion jobs, retrieval logs, Chroma vector services
@@ -74,7 +89,9 @@ Django admin: http://127.0.0.1:8000/admin/ — create a superuser with `python3 
 | `/login/`, `/logout/` | Auth |
 | `/dashboard/` | Role-aware dashboard |
 | `/courses/` | Course cards |
-| `/courses/<id>/` | Course detail (videos, quizzes, AR tasks) |
+| `/courses/<id>/` | Course detail (videos, quizzes, AR tasks, **Talk to tutor**) |
+| `/courses/<id>/tutor/message/` | POST JSON — AI tutor chat (session auth + CSRF) |
+| `/courses/<id>/tutor/speech/` | POST JSON — ElevenLabs TTS only (replay / extras) |
 | `/courses/<id>/videos/<video_id>/` | Video + sections; use `?t=90` to start near 90s (YouTube embed) |
 | `/admin-panel/` | Teacher-only custom panel (your courses, resources; `/admin-panel/manage/course/<id>/` edits a course) |
 | `/admin-panel/resources/` | **Teacher-only** resource dashboard (upload + table) |
