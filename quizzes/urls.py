@@ -15,4 +15,9 @@ urlpatterns = [
         views.QuizResultView.as_view(),
         name="quiz_result",
     ),
+    path(
+        "quizzes/<int:quiz_id>/leaderboard/",
+        views.QuizLeaderboardView.as_view(),
+        name="quiz_leaderboard",
+    ),
 ]

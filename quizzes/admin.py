@@ -35,5 +35,15 @@ class AnswerChoiceAdmin(admin.ModelAdmin):
 
 @admin.register(QuizAttempt)
 class QuizAttemptAdmin(admin.ModelAdmin):
-    list_display = ("student", "quiz", "score", "passed", "created_at")
+    list_display = (
+        "student",
+        "quiz",
+        "correct_answers",
+        "total_questions",
+        "score",
+        "completion_time_seconds",
+        "passed",
+        "created_at",
+    )
     list_filter = ("passed", "quiz")
+    readonly_fields = ("submission_id",)

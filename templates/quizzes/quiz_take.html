@@ -1,23 +1,31 @@
 {% extends "base.html" %}
-{% block title %}{{ quiz.title }} — Quiz{% endblock %}
+{% block title %}{{ quiz.title }} — Quiz — MotorMind{% endblock %}
 {% block content %}
-<nav aria-label="breadcrumb">
-  <ol class="breadcrumb">
+<nav aria-label="breadcrumb" class="pt-4">
+  <ol class="breadcrumb mb-0">
     <li class="breadcrumb-item"><a href="{% url 'courses:course_list' %}">Courses</a></li>
     <li class="breadcrumb-item"><a href="{% url 'courses:course_detail' quiz.course_id %}">{{ quiz.course.title }}</a></li>
     <li class="breadcrumb-item active">{{ quiz.title }}</li>
   </ol>
 </nav>
 
-<h1 class="h3 mb-3">{{ quiz.title }}</h1>
-<p class="text-muted">Pass mark: {{ quiz.pass_mark }}%</p>
+<div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-1">{{ quiz.title }}</h1>
+    <p class="text-muted mb-0">Pass mark: {{ quiz.pass_mark }}%</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-sm btn-dark" href="{% url 'quizzes:quiz_leaderboard' quiz.pk %}">Leaderboard</a>
+  </div>
+</div>
 
 <form method="post" novalidate>
   {% csrf_token %}
   {% if form.non_field_errors %}
     <div class="alert alert-danger">{{ form.non_field_errors }}</div>
   {% endif %}
-  {% for field in form %}
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% for field in form.visible_fields %}
     <div class="card shadow-sm mb-3">
       <div class="card-body">
         <p class="fw-semibold mb-2">{{ field.label }}</p>
@@ -35,5 +43,6 @@
   {% endfor %}
   <button type="submit" class="btn btn-primary">Submit answers</button>
   <a class="btn btn-outline-secondary" href="{% url 'courses:course_detail' quiz.course_id %}">Back to course</a>
+  <a class="btn btn-outline-dark" href="{% url 'quizzes:quiz_leaderboard' quiz.pk %}">View leaderboard</a>
 </form>
 {% endblock %}

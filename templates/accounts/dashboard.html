@@ -38,7 +38,7 @@
     <div class="card-header fw-semibold">Recent quiz attempts</div>
     <div class="table-responsive">
       <table class="table table-sm mb-0">
-        <thead><tr><th>Student</th><th>Quiz</th><th>Score</th><th>Pass</th><th>When</th></tr></thead>
+        <thead><tr><th>Student</th><th>Quiz</th><th>Score</th><th>Pass</th><th>When</th><th></th></tr></thead>
         <tbody>
           {% for a in recent_quiz_attempts %}
             <tr>
@@ -47,9 +47,10 @@
               <td>{{ a.score }}%</td>
               <td>{% if a.passed %}Yes{% else %}No{% endif %}</td>
               <td class="small">{{ a.created_at }}</td>
+              <td class="text-end"><a class="btn btn-sm btn-outline-dark" href="{% url 'quizzes:quiz_leaderboard' a.quiz_id %}">Board</a></td>
             </tr>
           {% empty %}
-            <tr><td colspan="5" class="text-muted">No attempts yet.</td></tr>
+            <tr><td colspan="6" class="text-muted">No attempts yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -100,9 +101,10 @@
         <div class="card-header fw-semibold">Quiz attempts</div>
         <ul class="list-group list-group-flush small">
           {% for a in my_quiz_attempts %}
-            <li class="list-group-item">
-              {{ a.quiz.title }} — <strong>{{ a.score }}%</strong>
-              ({% if a.passed %}pass{% else %}retry{% endif %})
+            <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span>{{ a.quiz.title }} — <strong>{{ a.score }}%</strong>
+              ({% if a.passed %}pass{% else %}retry{% endif %})</span>
+              <a class="btn btn-sm btn-outline-dark" href="{% url 'quizzes:quiz_leaderboard' a.quiz_id %}">Leaderboard</a>
             </li>
           {% empty %}
             <li class="list-group-item text-muted">No quiz attempts yet.</li>

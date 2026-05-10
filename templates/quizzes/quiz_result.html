@@ -4,19 +4,46 @@
 <h1 class="mb-3 pt-4">{{ quiz.course.title }}: {{ quiz.title }}</h1>
 
 {% if last_attempt %}
-  <div class="alert {% if last_attempt.passed %}alert-success{% else %}alert-warning{% endif %}">
-    Score: <strong>{{ last_attempt.score }}%</strong>
-    {% if last_attempt.passed %}
-      — Passed
-    {% else %}
-      — Not yet passing (need {{ quiz.pass_mark }}%)
-    {% endif %}
+  <div class="alert {% if last_attempt.passed %}alert-success{% else %}alert-warning{% endif %} shadow-sm">
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <div>
+        Score:
+        <strong class="font-monospace">{{ last_attempt.score_fraction_label }}</strong>
+        <span class="text-muted">({{ last_attempt.score }}%)</span>
+      </div>
+      {% if last_attempt.completion_time_seconds != None %}
+        <div class="small">
+          Time: <strong>{{ last_attempt.time_display }}</strong>
+        </div>
+      {% endif %}
+      <div class="ms-auto">
+        {% if last_attempt.passed %}
+          <span class="badge bg-success">Passed</span>
+        {% else %}
+          <span class="badge bg-secondary">Need {{ quiz.pass_mark }}% to pass</span>
+        {% endif %}
+      </div>
+    </div>
   </div>
-  <p class="small text-muted">Recorded at {{ last_attempt.created_at }}</p>
+
+  {% if user_rank %}
+    <p class="mb-2">
+      Your leaderboard rank (best run):
+      <strong class="font-monospace">#{{ user_rank.rank }}</strong>
+      of players who completed this quiz.
+    </p>
+  {% elif last_attempt.total_questions == 0 %}
+    <p class="text-muted small mb-2">This attempt predates the leaderboard. Take the quiz again to join rankings with score and time.</p>
+  {% endif %}
+
+  <p class="small text-muted mb-3">Recorded {{ last_attempt.created_at }}</p>
 {% else %}
   <p class="text-muted">No attempt recorded yet. <a href="{% url 'quizzes:quiz_take' quiz.pk %}">Take the quiz</a>.</p>
 {% endif %}
 
-<a class="btn btn-primary" href="{% url 'quizzes:quiz_take' quiz.pk %}">Retry</a>
-<a class="btn btn-outline-secondary" href="{% url 'courses:course_detail' quiz.course_id %}">Back to course</a>
+<div class="d-flex flex-wrap gap-2">
+  <a class="btn btn-primary" href="{% url 'quizzes:quiz_take' quiz.pk %}">Retry</a>
+  <a class="btn btn-info text-white" href="{% url 'quizzes:quiz_leaderboard' quiz.pk %}">Leaderboard</a>
+  <a class="btn btn-outline-secondary" href="{% url 'courses:course_detail' quiz.course_id %}">Back to course</a>
+</div>
 {% endblock %}

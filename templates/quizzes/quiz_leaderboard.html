@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard — {{ quiz.course.title }}: {{ quiz.title }} — MotorMind{% endblock %}
+
+{% block extra_head %}
+<style>
+  .leaderboard-hero {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 45%, #3d7ab5 100%);
+    color: #fff;
+    border-radius: 1rem;
+    padding: 1.75rem 1.5rem;
+    box-shadow: 0 0.5rem 1.25rem rgba(30, 58, 95, 0.35);
+  }
+  .leaderboard-table-wrap {
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.06);
+  }
+  .leaderboard-table thead th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: #5c6f82;
+    border-bottom-width: 2px;
+    background: #f8fafc;
+  }
+  .leaderboard-table tbody tr.row-you {
+    --bs-table-bg: rgba(255, 193, 7, 0.15);
+    --bs-table-hover-bg: rgba(255, 193, 7, 0.22);
+    box-shadow: inset 3px 0 0 #ffc107;
+  }
+  .leaderboard-table tbody tr.row-top-1 { --bs-table-bg: rgba(255, 215, 0, 0.12); }
+  .leaderboard-table tbody tr.row-top-2 { --bs-table-bg: rgba(192, 192, 192, 0.15); }
+  .leaderboard-table tbody tr.row-top-3 { --bs-table-bg: rgba(205, 127, 50, 0.12); }
+  .rank-medal { font-size: 1.35rem; line-height: 1; vertical-align: middle; }
+  .rank-num { font-weight: 700; font-variant-numeric: tabular-nums; }
+  @media (max-width: 575.98px) {
+    .leaderboard-hero { padding: 1.25rem 1rem; }
+    .leaderboard-table { font-size: 0.9rem; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="pt-4">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'courses:course_list' %}">Courses</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'courses:course_detail' quiz.course_id %}">{{ quiz.course.title }}</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'quizzes:quiz_result' quiz.pk %}">{{ quiz.title }}</a></li>
+    <li class="breadcrumb-item active">Leaderboard</li>
+  </ol>
+</nav>
+
+<div class="leaderboard-hero mb-4">
+  <h1 class="h3 mb-1">Quiz leaderboard</h1>
+  <p class="mb-0 opacity-90">{{ quiz.course.title }}: {{ quiz.title }}</p>
+  <p class="small mb-0 mt-2 opacity-75">
+    Ranked by highest score, then fastest time. Only each player’s <strong>best</strong> run counts.
+  </p>
+</div>
+
+{% if user_rank %}
+<div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 border-0 shadow-sm" style="background: linear-gradient(90deg, #fff8e1 0%, #fff3cd 100%);">
+  <div>
+    <strong>Your rank:</strong>
+    <span class="rank-num">#{{ user_rank.rank }}</span>
+    · {{ user_rank.score_label }}
+    · {{ user_rank.time_display }}
+  </div>
+  <span class="badge text-bg-dark">You</span>
+</div>
+{% endif %}
+
+<div class="card border-0 leaderboard-table-wrap">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover leaderboard-table mb-0 align-middle">
+        <thead>
+          <tr>
+            <th scope="col" class="ps-4">Rank</th>
+            <th scope="col">Player</th>
+            <th scope="col" class="text-center">Score</th>
+            <th scope="col" class="text-end">Time</th>
+            <th scope="col" class="text-end pe-4">Completed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if top_10 %}
+            {% for row in top_10 %}
+              <tr class="{% if row.student_id == user.id %}row-you{% endif %} {% if row.rank == 1 %}row-top-1{% elif row.rank == 2 %}row-top-2{% elif row.rank == 3 %}row-top-3{% endif %}">
+                <td class="ps-4">
+                  {% if row.rank == 1 %}
+                    <span class="rank-medal" title="1st place" aria-hidden="true">🥇</span>
+                  {% elif row.rank == 2 %}
+                    <span class="rank-medal" title="2nd place" aria-hidden="true">🥈</span>
+                  {% elif row.rank == 3 %}
+                    <span class="rank-medal" title="3rd place" aria-hidden="true">🥉</span>
+                  {% else %}
+                    <span class="rank-num text-muted">{{ row.rank }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="fw-semibold">{{ row.username }}</span>
+                  {% if row.student_id == user.id %}<span class="badge bg-warning text-dark ms-1">You</span>{% endif %}
+                </td>
+                <td class="text-center">
+                  <span class="font-monospace fw-semibold">{{ row.score_label }}</span>
+                </td>
+                <td class="text-end text-muted">{{ row.time_display }}</td>
+                <td class="text-end pe-4 small text-muted">{{ row.completed_at|date:"M j, Y" }} · {{ row.completed_at|time:"g:i a" }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="5" class="text-center text-muted py-5 px-3">
+                <p class="mb-2 fw-semibold text-body-secondary">No rankings yet</p>
+                <p class="small mb-0">
+                  The leaderboard lists players after they <strong>submit</strong> this quiz.
+                  Attempts saved before the leaderboard update need a fresh submission to appear here.
+                </p>
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% if user_rank and user_rank.rank > 10 %}
+<p class="small text-muted mt-3 mb-0">
+  You are <strong>#{{ user_rank.rank }}</strong> overall — keep practicing to reach the top 10.
+</p>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-2 mt-4">
+  <a class="btn btn-primary" href="{% url 'quizzes:quiz_take' quiz.pk %}">Take quiz</a>
+  <a class="btn btn-outline-secondary" href="{% url 'quizzes:quiz_result' quiz.pk %}">Your last result</a>
+  <a class="btn btn-outline-secondary" href="{% url 'courses:course_detail' quiz.course_id %}">Back to course</a>
+</div>
+{% endblock %}

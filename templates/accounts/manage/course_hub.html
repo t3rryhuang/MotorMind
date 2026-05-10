@@ -115,6 +115,7 @@
                 <div class="d-flex flex-wrap gap-1 align-items-center">
                   <a class="btn btn-sm btn-primary" href="{% url 'accounts:course_quiz_edit' course.pk q.pk %}">Edit Quiz</a>
                   <a class="btn btn-sm btn-outline-primary" href="{% url 'quizzes:quiz_take' q.pk %}" target="_blank" rel="noopener">Preview</a>
+                  <a class="btn btn-sm btn-outline-dark" href="{% url 'quizzes:quiz_leaderboard' q.pk %}" target="_blank" rel="noopener">Leaderboard</a>
                   <form method="post" action="{% url 'accounts:course_quiz_delete' course.pk q.pk %}" class="d-inline" onsubmit="return confirm('Delete this quiz and all attempts?');">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-danger">Remove Quiz</button>

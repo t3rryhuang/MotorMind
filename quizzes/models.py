@@ -71,6 +71,8 @@ class AnswerChoice(models.Model):
 
 
 class QuizAttempt(models.Model):
+    """One submitted quiz run. Leaderboard uses each user's best attempt (see quizzes.leaderboard)."""
+
     quiz = models.ForeignKey(
         Quiz,
         on_delete=models.CASCADE,
@@ -81,12 +83,60 @@ class QuizAttempt(models.Model):
         on_delete=models.CASCADE,
         related_name="quiz_attempts",
     )
-    score = models.IntegerField()
+    score = models.IntegerField(
+        help_text="Percentage correct (0–100), used for pass/fail.",
+    )
     passed = models.BooleanField()
+    correct_answers = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of questions answered correctly.",
+    )
+    total_questions = models.PositiveIntegerField(
+        default=0,
+        help_text="Question count for this quiz at submission time.",
+    )
+    completion_time_seconds = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Seconds from opening the quiz form to submit (server-side).",
+    )
+    submission_id = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        editable=False,
+        help_text="Idempotency token: one DB row per form session.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["quiz", "student"],
+                name="quizzes_qa_quiz_stud_idx",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.student} — {self.quiz} ({self.score}%)"
+
+    @property
+    def score_fraction_label(self) -> str:
+        """Human-readable score, e.g. 8/10."""
+        if self.total_questions:
+            return f"{self.correct_answers}/{self.total_questions}"
+        return f"{self.score}%"
+
+    @property
+    def time_display(self) -> str:
+        if self.completion_time_seconds is None:
+            return "—"
+        s = self.completion_time_seconds
+        if s < 60:
+            return f"{s}s"
+        m, sec = divmod(s, 60)
+        if m >= 60:
+            h, m = divmod(m, 60)
+            return f"{h}h {m}m {sec}s"
+        return f"{m}m {sec}s"
