@@ -1,6 +1,8 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import DetailView, ListView, TemplateView
 
+from quizzes.models import QuizAttempt
+
 from .models import Course, TrainingVideo
 from .utils import extract_youtube_video_id
 
@@ -75,6 +77,24 @@ class CourseDetailView(LoginRequiredMixin, DetailView):
             pass
         if "course_reading_sources" not in ctx:
             ctx["course_reading_sources"] = []
+
+        quiz_rows = []
+        last_by_quiz = {}
+        if self.request.user.is_authenticated:
+            quiz_pks = list(self.object.quizzes.values_list("pk", flat=True))
+            if quiz_pks:
+                for att in QuizAttempt.objects.filter(
+                    student=self.request.user,
+                    quiz_id__in=quiz_pks,
+                ).order_by("-created_at"):
+                    if att.quiz_id not in last_by_quiz:
+                        last_by_quiz[att.quiz_id] = att
+        for q in self.object.quizzes.all():
+            quiz_rows.append(
+                {"quiz": q, "last_attempt": last_by_quiz.get(q.pk)}
+            )
+        ctx["course_quiz_rows"] = quiz_rows
+
         return ctx
 
 

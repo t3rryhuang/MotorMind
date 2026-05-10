@@ -8,6 +8,7 @@ import base64
 import json
 import logging
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -17,6 +18,7 @@ from courses.models import Course
 
 from .models import TutorConversation, TutorMessage
 from .services.llm import generate_tutor_reply
+from .services.speech_cleanup import clean_text_for_speech
 from .services.tts import synthesize_speech
 
 logger = logging.getLogger(__name__)
@@ -106,7 +108,10 @@ def tutor_message(request, course_id):
     )
 
     if speak and reply_text:
-        audio_bytes, tts_err = synthesize_speech(reply_text)
+        speech_text = clean_text_for_speech(reply_text)
+        if settings.DEBUG:
+            print("TTS text:", speech_text)
+        audio_bytes, tts_err = synthesize_speech(speech_text)
         if tts_err:
             warnings.append(tts_err)
         elif audio_bytes:
@@ -148,7 +153,11 @@ def tutor_speech(request, course_id):
     if not text:
         return JsonResponse({"success": False, "error": "text is required"}, status=400)
 
-    audio_bytes, tts_err = synthesize_speech(text)
+    speech_text = clean_text_for_speech(text)
+    if settings.DEBUG:
+        print("TTS text:", speech_text)
+
+    audio_bytes, tts_err = synthesize_speech(speech_text)
     if tts_err or not audio_bytes:
         return JsonResponse(
             {

@@ -154,17 +154,24 @@
 <div class="card shadow-sm mt-4">
   <div class="card-header fw-semibold">Quizzes</div>
   <ul class="list-group list-group-flush">
-    {% for q in course.quizzes.all %}
-      <li class="list-group-item d-flex justify-content-between align-items-center">
+    {% for row in course_quiz_rows %}
+      {% with q=row.quiz last=row.last_attempt %}
+      <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
           <strong>{{ q.title }}</strong>
           <span class="badge bg-secondary ms-2">Pass {{ q.pass_mark }}%</span>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
           <a class="btn btn-sm btn-primary" href="{% url 'quizzes:quiz_take' q.pk %}">Start quiz</a>
-          <a class="btn btn-sm btn-outline-secondary" href="{% url 'quizzes:quiz_result' q.pk %}">Last result</a>
+          {% if last %}
+          <a class="small text-nowrap link-secondary" href="{% url 'quizzes:quiz_result' q.pk %}" title="View your last submission">
+            Last score: <strong class="text-body">{{ last.score }}%</strong>
+            <span class="text-muted">· view submission</span>
+          </a>
+          {% endif %}
         </div>
       </li>
+      {% endwith %}
     {% empty %}
       <li class="list-group-item text-muted">No quizzes yet.</li>
     {% endfor %}
