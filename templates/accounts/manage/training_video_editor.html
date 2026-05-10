@@ -169,9 +169,12 @@
           {{ form.transcript_source }}
           {% for err in form.thumbnail_url.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
           {% for err in form.transcript_source.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
-          <div class="d-flex flex-wrap gap-2">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
             <button type="submit" class="btn btn-primary">Save</button>
             <a class="btn btn-outline-secondary" href="{% if cancel_url %}{{ cancel_url }}{% else %}{% url 'accounts:admin_panel' %}{% endif %}">Cancel</a>
+            {% if sections_apply_url %}
+            <span class="small text-muted ms-md-2">Save also writes <strong>Suggested learning sections</strong> (checked rows) to the database when this video already exists.</span>
+            {% endif %}
           </div>
         </form>
       </div>
@@ -631,10 +634,13 @@
   var btnSuggest = document.getElementById('btn-suggest-sections');
   var btnReplace = document.getElementById('btn-replace-sections');
   var btnAddSel = document.getElementById('btn-add-selected-sections');
+  var suggestUrl = '';
+  var applyUrl = '';
+  var addSectionsBatchApplied = false;
+
   if (btnSuggest) {
-    var suggestUrl = (btnSuggest.getAttribute('data-suggest-url') || '').trim();
-    var applyUrl = (btnSuggest.getAttribute('data-apply-url') || '').trim();
-    var addSectionsBatchApplied = false;
+    suggestUrl = (btnSuggest.getAttribute('data-suggest-url') || '').trim();
+    applyUrl = (btnSuggest.getAttribute('data-apply-url') || '').trim();
 
     function setAddSelectedButtonState() {
       if (!btnAddSel) return;
@@ -791,6 +797,51 @@
         });
       });
     }
+
+    form.addEventListener('submit', function (e) {
+      if (!applyUrl || addSectionsBatchApplied) return;
+      var tbody = document.getElementById('suggested-sections-tbody');
+      if (!tbody || !tbody.querySelector('tr')) return;
+      var rows = gatherSuggestedFromTable(true);
+      if (!rows.length) {
+        rows = gatherSuggestedFromTable(false);
+      }
+      if (!rows.length) return;
+      e.preventDefault();
+      var submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      fetch(applyUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({ mode: 'append', sections: rows })
+      }).then(function (r) {
+        return r.text().then(function (text) {
+          return { ok: r.ok, data: parseJsonResponse(r, text) };
+        });
+      }).then(function (res) {
+        if (submitBtn) submitBtn.disabled = false;
+        var data = res.data;
+        if (!res.ok || !data.success) {
+          showAlert('danger', (data && data.error) ? data.error : 'Could not save learning sections.');
+          return;
+        }
+        addSectionsBatchApplied = true;
+        setAddSelectedButtonState();
+        renderSavedVideoSectionsRows(data.sections || []);
+        if (data.created > 0) {
+          showAlert('success', 'Saved ' + data.created + ' learning section(s) with this video.');
+        }
+        form.submit();
+      }).catch(function (err) {
+        if (submitBtn) submitBtn.disabled = false;
+        var extra = err && err.message ? ' ' + err.message : '';
+        showAlert('danger', 'Network error while saving sections.' + extra);
+      });
+    });
   }
 })();
 </script>

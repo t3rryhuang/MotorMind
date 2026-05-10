@@ -1,8 +1,10 @@
-# Car-Hoot
+# MotorMind
 
-Car-Hoot is a hackathon-style **automotive electronics education** prototype built with **Django** and **Django REST Framework**. Teachers manage courses, training videos (with sections and transcripts), quizzes, and AR-style practical tasks. Students watch videos (with timestamp jumps), take quizzes, and update AR task progress. JSON APIs are included for a future iOS AR companion app.
+MotorMind is a hackathon-style **automotive electronics education** prototype built with **Django** and **Django REST Framework**. Teachers manage **courses** (with optional icons), **training videos** (transcripts, paragraph timestamps, **learning sections**), **quizzes**, and a **resource library** with vector search. Students browse courses, watch embedded video with section-based navigation, take quizzes (with leaderboards and optional **Solana Devnet** skill badges), and use an **AI tutor** on each course page.
 
-Teachers can also maintain a **Resource Library**: upload PDFs / notes / manuals / transcripts, associate them with **one or many courses** (ManyToMany), ingest them into a **local ChromaDB** vector index, and run **semantic retrieval tests** (RAG-ready, without storing per-chunk rows in SQLite).
+**AR tasks:** the `ar_tasks` app (models + `/api/` endpoints) remains for a possible future companion app, but **AR task pages and navigation were removed from the public web UI** so the shipped teacher/student experience focuses on video, quizzes, reading, and tutor.
+
+Teachers can maintain a **Resource Library**: upload PDFs / notes / manuals / transcripts, associate them with **one or many courses** (ManyToMany), ingest them into a **local ChromaDB** vector index, and run **semantic retrieval tests** (RAG-ready, without storing per-chunk rows in SQLite).
 
 ## Requirements
 
@@ -12,7 +14,7 @@ Teachers can also maintain a **Resource Library**: upload PDFs / notes / manuals
 ## Quick start
 
 ```bash
-cd CarHoot
+cd MotorMind
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -34,6 +36,13 @@ On **Add / Edit training video**, teachers paste a YouTube URL first, then use *
 - If no captions exist, the transcript field is left empty and the UI shows a clear warning: add a transcript manually or configure **audio transcription** later (not implemented yet; **`yt-dlp`** is listed in requirements for future metadata / pipeline work — see TODO in `courses/services/youtube.py`).
 - **AI write description** calls Google **Generative AI** when **`GOOGLE_API_KEY`** is set in `.env` (from [Google AI Studio](https://aistudio.google.com/app/apikey)). Model name defaults to **`GOOGLE_MODEL_NAME=gemma-3-27b-it`**; override if your project uses another supported model. If the key is missing, the UI shows a clear “not configured” message instead of crashing.
 - **Never commit API keys.** Keep secrets in `.env` (gitignored). If a key was ever exposed in chat or a ticket, **rotate it** in Google Cloud / AI Studio.
+
+### Learning sections (suggested + saved)
+
+On **Edit training video**, after **Suggest learning sections**, the table is a draft until it is stored:
+
+- **Add selected sections** / **Replace existing sections with suggestions** POSTs to the apply API and persists `VideoSection` rows.
+- **Save** (main form) also **appends** checked suggested rows to the database (when the video already exists and suggestions are present), then saves the video fields — so you do not lose sections if you only hit **Save**.
 
 ### AI Tutor / ElevenLabs (course page)
 
@@ -61,24 +70,55 @@ If you see `OperationalError: no such column ... thumbnail_url`, the database is
 
 ### Demo logins (from `seed_demo`)
 
-| Role    | Username  | Password    |
-|---------|-----------|-------------|
-| Teacher | `teacher` | `teacher123` |
+| Role    | Username   | Password     |
+|---------|------------|--------------|
+| Teacher | `teacher`  | `teacher123` |
 | Student | `student1` | `student123` |
 | Student | `student2` | `student123` |
 
 Django admin: http://127.0.0.1:8000/admin/ — create a superuser with `python3 manage.py createsuperuser` if you need full admin access.
 
+## Teacher admin panel (`/admin-panel/`)
+
+- **Courses:** lists **all** courses with **owner** (`created_by`), optional **course icon** thumbnail, **Edit** / **Delete** for courses you manage (staff see all); **View** for others. Public **Courses** page shows every course; this panel explains why a course may appear publicly but not be “yours” to edit.
+- **Student progress:** recent quiz attempts on **your** courses (staff see all); each row can be **deleted** (POST) unless a **claimed** Solana badge blocks deletion.
+- **Course editor** (`/admin-panel/manage/course/<id>/`): metadata, **course icon picker**, videos, quizzes, resources, reading generation, etc.
+
+### Management commands (accounts app)
+
+Useful for cleanup and debugging:
+
+```bash
+# List courses with id, title, owner, video/quiz/attempt counts
+python manage.py list_courses_debug
+
+# Dry-run (default): show quiz attempts that would be removed
+python manage.py cleanup_demo_attempts --users a,b --quizzes T
+
+# Actually delete matching attempts (+ unclaimed skill badges for those attempts)
+python manage.py cleanup_demo_attempts --users a,b --quizzes T --confirm
+
+# Delete one course by id (requires --confirm)
+python manage.py delete_course <course_id> --confirm
+```
+
+## Course icons
+
+- `Course.icon_name` stores a slug (e.g. `diagnostics`, `fuse`); static SVGs live under `static/images/course-icons/`.
+- **`Course.icon_static_path`** resolves to a path under `static/`; invalid/blank values fall back to **`default.svg`**.
+- Teachers pick an icon on **Edit course** (and **Add course**); **Courses** cards and **course detail** show the icon.
+
 ## Project layout
 
-- `carhoot/` — project settings and root URLconf
-- `accounts/` — login/logout, dashboard, teacher **admin panel** (courses + resource library; course editor nests videos/sections, quizzes, AR tasks), `Profile` (teacher/student)
-- `courses/` — `Course`, `TrainingVideo`, `VideoSection`, landing page, course/video views
+- `carhoot/` — Django project package: **settings** and root **URLconf** (historical package name; product is **MotorMind**)
+- `accounts/` — login/logout, role-aware **dashboard**, **teacher admin panel** (courses, resources, quiz-attempt removal, nested course editor), `Profile` (teacher/student)
+- `courses/` — `Course` (incl. `icon_name`), `TrainingVideo`, `VideoSection`, landing, course list/detail
 - `tutor/` — AI tutor conversations/messages; course context + Gemini + optional ElevenLabs TTS
-- `quizzes/` — quiz models, take quiz / results
-- `ar_tasks/` — AR task models, task detail, progress updates (web POST)
+- `quizzes/` — quiz models, take quiz / results / leaderboard
+- `ar_tasks/` — models + **REST API** only (no web task UI in this branch)
 - `resources/` — **Resource library**, ingestion jobs, retrieval logs, Chroma vector services
-- `api/` — DRF serializers and read-mostly endpoints for mobile clients
+- `study_content/` — course reading pages / generation hooks from the admin course UI
+- `api/` — DRF serializers and endpoints for courses, videos, sections, quizzes, resources, AR (API), etc.
 - `templates/` — Bootstrap 5 base layout and page templates
 - `solana_badges/` — optional **Solana Devnet** “Proof of Skill” memo transactions after passing a quiz (not NFTs)
 
@@ -116,7 +156,7 @@ After `check_solana_badges` reports **READY**:
 python manage.py send_test_solana_badge --wallet <any_devnet_pubkey_for_your_notes>
 ```
 
-This sends a memo `Car-Hoot test badge transaction` and prints the **signature** and **Solana Explorer** link. If the issuer has **no SOL**, the command exits with a clear message and does **not** send.
+This sends a small **test memo** on Devnet and prints the **signature** and **Solana Explorer** link. If the issuer has **no SOL**, the command exits with a clear message and does **not** send.
 
 ### In the app
 
@@ -131,12 +171,14 @@ This sends a memo `Car-Hoot test badge transaction` and prints the **signature**
 | `/` | Landing |
 | `/login/`, `/logout/` | Auth |
 | `/dashboard/` | Role-aware dashboard |
-| `/courses/` | Course cards |
-| `/courses/<id>/` | Course detail (videos, quizzes, AR tasks, **Talk to tutor**) |
+| `/courses/` | Course cards (icons + descriptions) |
+| `/courses/<id>/` | Course detail (videos, quizzes, **Talk to tutor**; no AR web UI) |
 | `/courses/<id>/tutor/message/` | POST JSON — AI tutor chat (session auth + CSRF) |
 | `/courses/<id>/tutor/speech/` | POST JSON — ElevenLabs TTS only (replay / extras) |
 | `/courses/<id>/videos/<video_id>/` | Video + sections; use `?t=90` to start near 90s (YouTube embed) |
-| `/admin-panel/` | Teacher-only custom panel (your courses, resources; `/admin-panel/manage/course/<id>/` edits a course) |
+| `/admin-panel/` | Teacher/staff **admin panel** (all courses + owner, resources, student quiz attempts) |
+| `/admin-panel/manage/course/<id>/` | Course hub (icon, metadata, videos, quizzes, reading, resources) |
+| `/admin-panel/progress/quiz-attempt/<id>/delete/` | POST — teacher/staff delete quiz attempt (blocked if Solana badge **claimed**) |
 | `/admin-panel/resources/` | **Teacher-only** resource dashboard (upload + table) |
 | `/admin-panel/resources/test/` | **Teacher-only** retrieval test UI |
 | `/admin-panel/videos/youtube-autofill/` | **Teacher-only** POST JSON — oEmbed + captions for the video form |
@@ -153,7 +195,7 @@ This sends a memo `Car-Hoot test badge transaction` and prints the **signature**
 2. Open **Resource Library** (`/admin-panel/resources/`) and upload the file.
 3. Optionally select **one or more courses** (checkboxes).
 4. Leave **Resource type** on **Auto** for PDFs (defaults to **book**) or pick a type explicitly.
-5. Car-Hoot **validates ISBN-10 / ISBN-13 checksums**, then tries **Open Library** and **Google Books** to auto-fill title/author/publisher/year/description when possible.
+5. MotorMind **validates ISBN-10 / ISBN-13 checksums**, then tries **Open Library** and **Google Books** to auto-fill title/author/publisher/year/description when possible.
 6. If lookup fails, the resource is still created with the ISBN as the working title; use **Retry metadata lookup** on the detail page, **Edit metadata**, or `python3 manage.py lookup_resource_metadata <id>` after fixing data.
 7. **Scanned/image-only PDFs** may not contain extractable text — ingestion may fail until OCR is applied (outside this prototype).
 
@@ -181,7 +223,7 @@ curl -u teacher:teacher123 -X POST http://127.0.0.1:8000/api/resources/upload/ \
 ### ISBN metadata lookup
 
 - **Book PDFs** should be named with a valid ISBN, for example `9780080969459.pdf` (hyphens allowed in the stem).
-- Car-Hoot calls **Open Library** first (`GET https://openlibrary.org/isbn/{ISBN}.json`, 10s timeout). Many editions list authors only on the linked **work** record; the app follows `/works/...` and `/authors/...` links to resolve names.
+- MotorMind calls **Open Library** first (`GET https://openlibrary.org/isbn/{ISBN}.json`, 10s timeout). Many editions list authors only on the linked **work** record; the app follows `/works/...` and `/authors/...` links to resolve names.
 - If Open Library is missing useful fields, **Google Books** is used as **fallback and enrichment** (`GET https://www.googleapis.com/books/v1/volumes?q=isbn:{ISBN}`).
 - Lookup can **fail** if the ISBN is unknown, an API error occurs, or the server has **no outbound internet** — the `Resource` is still created, `title` falls back to the ISBN, `metadata_lookup_status` is set to **failed**, and **ingestion / ChromaDB** still runs.
 - Teachers can **retry** lookup from the resource detail page (**Retry metadata lookup**) or run:
@@ -199,11 +241,11 @@ curl -u teacher:teacher123 -X POST http://127.0.0.1:8000/api/resources/upload/ \
 
 `Resource.courses` is a **ManyToManyField** to `courses.Course` (no `ForeignKey` from `Resource` → `Course`). A resource can belong to **zero, one, or many** courses, and a course can have many resources.
 
-When course associations change, Car-Hoot **updates Chroma metadata only** (`course_ids_csv`, `course_titles_csv`, JSON mirrors) on existing chunk vectors — **no** full re-extraction, re-chunking, or re-embedding. Use **Re-ingest** on the resource detail page when you actually need to rebuild vectors from the file.
+When course associations change, MotorMind **updates Chroma metadata only** (`course_ids_csv`, `course_titles_csv`, JSON mirrors) on existing chunk vectors — **no** full re-extraction, re-chunking, or re-embedding. Use **Re-ingest** on the resource detail page when you actually need to rebuild vectors from the file.
 
 ### Embeddings (local)
 
-The project tries **`sentence-transformers`** first, but many developer machines have broken global TensorFlow/Keras stacks that can break `import sentence_transformers`. In that case Car-Hoot **falls back** to Chroma’s bundled **ONNX MiniLM** embedding function (still `all-MiniLM-L6-v2`-class, 384-dim).
+The project tries **`sentence-transformers`** first, but many developer machines have broken global TensorFlow/Keras stacks that can break `import sentence_transformers`. In that case MotorMind **falls back** to Chroma’s bundled **ONNX MiniLM** embedding function (still `all-MiniLM-L6-v2`-class, 384-dim).
 
 - TODO: swap in `OpenAIEmbeddingFunction` (see `resources/services/embeddings.py`) for hosted embeddings.
 
@@ -224,28 +266,34 @@ python3 manage.py clear_vector_db
 
 This deletes the `carhoot_resources` Chroma collection and recreates an empty one. It does **not** delete Django `Resource` rows; re-run **Re-ingest** from the UI (or `python3 manage.py ingest_resource <id>`) to rebuild vectors.
 
-### Management commands
+### Management commands (resources / courses)
 
 - `python3 manage.py seed_demo` — demo users/content + optional demo text resource ingest (skips vector ingest if dependencies fail).
 - `python3 manage.py ingest_resource <resource_id>` — run ingestion synchronously.
 - `python3 manage.py lookup_resource_metadata <resource_id>` — re-fetch book metadata using `Resource.isbn`.
 - `python3 manage.py clear_vector_db` — drop/recreate the Chroma collection.
 - `python3 manage.py test_vector_search "your query"` — quick CLI vector search.
+- See **Teacher admin panel** above for `list_courses_debug`, `cleanup_demo_attempts`, and `delete_course`.
 
 ## JSON API (authenticated)
 
 All routes are under **`/api/`** and require authentication (session or basic auth in development).
 
-### Existing course / AR endpoints
+### Course / content endpoints
 
 | Method | Path | Notes |
 |--------|------|--------|
-| GET | `/api/courses/` | Course list |
-| GET | `/api/courses/<id>/` | Course detail (nested videos w/ sections, quizzes, AR tasks) |
+| GET | `/api/courses/` | Course list (`icon_name`, `icon_static_path` included) |
+| GET | `/api/courses/<id>/` | Course detail (nested videos w/ sections, quizzes; `ar_tasks` in JSON for clients that use it) |
 | GET | `/api/courses/<id>/videos/` | Videos for a course |
 | GET | `/api/videos/<id>/sections/` | Sections for a video |
 | GET | `/api/courses/<id>/quizzes/` | Quizzes for a course |
 | GET | `/api/quizzes/<id>/` | Quiz + nested questions + choices |
+
+### AR task endpoints (API only)
+
+| Method | Path | Notes |
+|--------|------|--------|
 | GET | `/api/courses/<id>/ar-tasks/` | AR tasks for a course |
 | GET | `/api/ar-tasks/<id>/` | AR task + steps + linked section |
 | POST | `/api/ar-tasks/<id>/progress/` | Body: `status`, `notes` — **student** role (staff exempt) |
@@ -271,7 +319,7 @@ curl -u teacher:teacher123 -X POST http://127.0.0.1:8000/api/resources/search/ \
   -d '{"query":"how do you test a car fuse?","top_k":3,"course_id":1}'
 ```
 
-Example (student AR progress):
+Example (student AR progress via API):
 
 ```bash
 curl -u student1:student123 -X POST http://127.0.0.1:8000/api/ar-tasks/1/progress/ \
@@ -284,5 +332,5 @@ curl -u student1:student123 -X POST http://127.0.0.1:8000/api/ar-tasks/1/progres
 - **Large PDF uploads**: there is no app-enforced file size cap. Django’s `DATA_UPLOAD_MAX_MEMORY_NUMBER` is raised (default **200 MB** request body; override with `DATA_UPLOAD_MAX_MEMORY_MB` in `.env`). Very large books produce more Chunks → longer CPU time during synchronous ingest.
 - **SQLite** is used for development (`db.sqlite3`).
 - **Bootstrap 5** is loaded from a CDN in `templates/base.html`.
-- AR tasks are **virtual fault simulations** on a healthy vehicle; readings are instructional, not live OBD.
+- **Public course list** uses a flex card layout (clamped descriptions; **Open** anchored at the bottom of each card).
 - Uploaded files are stored under `MEDIA_ROOT/resources/` (served in `DEBUG` mode from `/media/`).

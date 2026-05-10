@@ -389,11 +389,9 @@ def apply_suggested_sections(
                     continue
                 to_create.append(row)
                 existing.add(key)
+            # Idempotent append: nothing new to insert (e.g. table matches DB already).
             if not to_create:
-                return (
-                    0,
-                    "These sections are already saved for this video. Click “Suggest learning sections” again for a fresh layout, or change titles or times before adding.",
-                )
+                return (0, None)
         for i, row in enumerate(to_create):
             VideoSection.objects.create(
                 video=video,

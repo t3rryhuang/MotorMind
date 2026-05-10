@@ -298,7 +298,7 @@ class VideoSectionsSuggestionsTests(TestCase):
         self.assertGreaterEqual(n, 1)
         self.assertEqual(v.sections.count(), n)
 
-    def test_append_rejects_when_all_rows_duplicate(self):
+    def test_append_idempotent_when_all_rows_duplicate(self):
         from courses.models import VideoSection
         from courses.services.section_suggestions import apply_suggested_sections
 
@@ -321,8 +321,7 @@ class VideoSectionsSuggestionsTests(TestCase):
         rows = [{"title": "Part A", "start_seconds": 10, "end_seconds": 50, "summary": ""}]
         n, err = apply_suggested_sections(v, rows, replace=False)
         self.assertEqual(n, 0)
-        self.assertIsNotNone(err)
-        self.assertIn("already", (err or "").lower())
+        self.assertIsNone(err)
         self.assertEqual(v.sections.count(), 1)
 
 
