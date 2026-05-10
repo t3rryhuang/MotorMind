@@ -1,6 +1,6 @@
 # MotorMind
 
-MotorMind is a hackathon-style **automotive electronics education** prototype built with **Django** and **Django REST Framework**. Teachers manage **courses** (with optional icons), **training videos** (transcripts, paragraph timestamps, **learning sections**), **quizzes**, and a **resource library** with vector search. Students browse courses, watch embedded video with section-based navigation, take quizzes (with leaderboards and optional **Solana Devnet** skill badges), and use an **AI tutor** on each course page.
+MotorMind is an **automotive electronics education** prototype built with **Django** and **Django REST Framework**. Teachers manage **courses** (with optional icons), **training videos** (transcripts, paragraph timestamps, **learning sections**), **quizzes**, and a **resource library** with vector search. Students browse courses, watch embedded video with section-based navigation, take quizzes (with leaderboards and optional **Solana Devnet** skill badges), and use an **AI tutor** on each course page.
 
 **AR tasks:** the `ar_tasks` app (models + `/api/` endpoints) remains for a possible future companion app, but **AR task pages and navigation were removed from the public web UI** so the shipped teacher/student experience focuses on video, quizzes, reading, and tutor.
 
