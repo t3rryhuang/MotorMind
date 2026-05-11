@@ -1,10 +1,10 @@
 # MotorMind
 
-MotorMind is an **automotive electronics education** prototype built with **Django** and **Django REST Framework**. Teachers manage **courses** (with optional icons), **training videos** (transcripts, paragraph timestamps, **learning sections**), **quizzes**, and a **resource library** with vector search. Students browse courses, watch embedded video with section-based navigation, take quizzes (with leaderboards and optional **Solana Devnet** skill badges), and use an **AI tutor** on each course page.
+MotorMind is an **automotive electronics education** prototype built with **Django** and **Django REST Framework**. Teachers manage **courses** (with optional icons), **training videos** (transcripts, paragraph timestamps, **learning sections**), **quizzes** and a **resource library** with vector search. Students browse courses, watch embedded video with section-based navigation, take quizzes (with leaderboards and optional **Solana Devnet** skill badges) and use an **AI tutor** on each course page.
 
-**AR tasks:** the `ar_tasks` app (models + `/api/` endpoints) remains for a possible future companion app, but **AR task pages and navigation were removed from the public web UI** so the shipped teacher/student experience focuses on video, quizzes, reading, and tutor.
+**AR tasks:** the `ar_tasks` app (models + `/api/` endpoints) remains for a possible future companion app, but **AR task pages and navigation were removed from the public web UI** so the shipped teacher/student experience focuses on video, quizzes, reading and tutor.
 
-Teachers can maintain a **Resource Library**: upload PDFs / notes / manuals / transcripts, associate them with **one or many courses** (ManyToMany), ingest them into a **local ChromaDB** vector index, and run **semantic retrieval tests** (RAG-ready, without storing per-chunk rows in SQLite).
+Teachers can maintain a **Resource Library**: upload PDFs / notes / manuals / transcripts, associate them with **one or many courses** (ManyToMany), ingest them into a **local ChromaDB** vector index and run **semantic retrieval tests** (RAG-ready, without storing per-chunk rows in SQLite).
 
 ## Requirements
 
@@ -18,7 +18,7 @@ cd MotorMind
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env        # optional; set SECRET_KEY, and GOOGLE_API_KEY if you use “AI write description”
+cp .env.example .env        # optional; set SECRET_KEY and GOOGLE_API_KEY if you use “AI write description”
 python3 manage.py migrate
 python3 manage.py check_trainingvideo_schema   # optional: verify TrainingVideo columns exist
 python3 manage.py seed_demo
@@ -46,7 +46,7 @@ On **Edit training video**, after **Suggest learning sections**, the table is a 
 
 ### AI Tutor / ElevenLabs (course page)
 
-On **`/courses/<id>/`**, logged-in users see a floating **Talk to tutor** control. They can type (or use the browser **Web Speech API** where supported) to ask questions; the server builds context from the course title/description, reading page (plain text + citations), training video transcripts and section timestamps, the latest saved top reading chunks, quiz questions (including `source_refs` where set), and recent **quiz attempt scores** (pass/fail and percentage — per-question right/wrong is **not** stored yet; the tutor is told that in context).
+On **`/courses/<id>/`**, logged-in users see a floating **Talk to tutor** control. They can type (or use the browser **Web Speech API** where supported) to ask questions; the server builds context from the course title/description, reading page (plain text + citations), training video transcripts and section timestamps, the latest saved top reading chunks, quiz questions (including `source_refs` where set) and recent **quiz attempt scores** (pass/fail and percentage — per-question right/wrong is **not** stored yet; the tutor is told that in context).
 
 - **Gemini** (`GOOGLE_API_KEY`, `GOOGLE_MODEL_NAME`) powers tutor **reasoning and text** replies. If the key is missing, the API returns a clear configuration error and typed chat does not call the model.
 - **ElevenLabs** (`ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`) is used **only** for optional **spoken** playback of the assistant reply (`audio/mpeg` as base64 in the JSON response). It is never used for reasoning. If ElevenLabs is not configured, chat still works; warnings may list missing voice/key.
@@ -146,7 +146,7 @@ python manage.py migrate
 python manage.py check_solana_badges
 ```
 
-You should see the **issuer public key**, **balance in SOL**, and either **READY** or **NOT READY** (with the address to fund). The command **never prints** the private key.
+You should see the **issuer public key**, **balance in SOL** and either **READY** or **NOT READY** (with the address to fund). The command **never prints** the private key.
 
 ### Test memo transaction
 
@@ -225,7 +225,7 @@ curl -u teacher:teacher123 -X POST http://127.0.0.1:8000/api/resources/upload/ \
 - **Book PDFs** should be named with a valid ISBN, for example `9780080969459.pdf` (hyphens allowed in the stem).
 - MotorMind calls **Open Library** first (`GET https://openlibrary.org/isbn/{ISBN}.json`, 10s timeout). Many editions list authors only on the linked **work** record; the app follows `/works/...` and `/authors/...` links to resolve names.
 - If Open Library is missing useful fields, **Google Books** is used as **fallback and enrichment** (`GET https://www.googleapis.com/books/v1/volumes?q=isbn:{ISBN}`).
-- Lookup can **fail** if the ISBN is unknown, an API error occurs, or the server has **no outbound internet** — the `Resource` is still created, `title` falls back to the ISBN, `metadata_lookup_status` is set to **failed**, and **ingestion / ChromaDB** still runs.
+- Lookup can **fail** if the ISBN is unknown, an API error occurs, or the server has **no outbound internet** — the `Resource` is still created, `title` falls back to the ISBN, `metadata_lookup_status` is set to **failed** and **ingestion / ChromaDB** still runs.
 - Teachers can **retry** lookup from the resource detail page (**Retry metadata lookup**) or run:
   - `python3 manage.py lookup_isbn 9780080969459` — prints normalized JSON and `metadata_source`
   - `python3 manage.py lookup_resource_metadata <resource_id>` — updates the row and prints before/after title, author, publisher, year
@@ -233,13 +233,13 @@ curl -u teacher:teacher123 -X POST http://127.0.0.1:8000/api/resources/upload/ \
 
 ### What is stored where
 
-- **SQLite** stores only **high-level metadata** (`Resource`), **ingestion jobs** (`ResourceIngestionJob`), **retrieval logs** (`ResourceRetrievalLog`), and the **ManyToMany** link between `Resource` and `Course`.
-- **ChromaDB** (on disk under `vector_db/`) stores **one vector per text chunk**, including the **full chunk text** as the Chroma **document**, embeddings, and rich **metadata** (resource id/title/type, course ids/titles, page number, chunk index, char offsets, etc.).
+- **SQLite** stores only **high-level metadata** (`Resource`), **ingestion jobs** (`ResourceIngestionJob`), **retrieval logs** (`ResourceRetrievalLog`) and the **ManyToMany** link between `Resource` and `Course`.
+- **ChromaDB** (on disk under `vector_db/`) stores **one vector per text chunk**, including the **full chunk text** as the Chroma **document**, embeddings and rich **metadata** (resource id/title/type, course ids/titles, page number, chunk index, char offsets, etc.).
 - `Resource.chunk_count` is a **UI counter** mirrored from ingestion; there is **no** `ResourceChunk` table and **no** per-chunk SQLite rows.
 
 ### Many-to-many courses
 
-`Resource.courses` is a **ManyToManyField** to `courses.Course` (no `ForeignKey` from `Resource` → `Course`). A resource can belong to **zero, one, or many** courses, and a course can have many resources.
+`Resource.courses` is a **ManyToManyField** to `courses.Course` (no `ForeignKey` from `Resource` → `Course`). A resource can belong to **zero, one, or many** courses and a course can have many resources.
 
 When course associations change, MotorMind **updates Chroma metadata only** (`course_ids_csv`, `course_titles_csv`, JSON mirrors) on existing chunk vectors — **no** full re-extraction, re-chunking, or re-embedding. Use **Re-ingest** on the resource detail page when you actually need to rebuild vectors from the file.
 
@@ -273,7 +273,7 @@ This deletes the `carhoot_resources` Chroma collection and recreates an empty on
 - `python3 manage.py lookup_resource_metadata <resource_id>` — re-fetch book metadata using `Resource.isbn`.
 - `python3 manage.py clear_vector_db` — drop/recreate the Chroma collection.
 - `python3 manage.py test_vector_search "your query"` — quick CLI vector search.
-- See **Teacher admin panel** above for `list_courses_debug`, `cleanup_demo_attempts`, and `delete_course`.
+- See **Teacher admin panel** above for `list_courses_debug`, `cleanup_demo_attempts` and `delete_course`.
 
 ## JSON API (authenticated)
 
@@ -308,7 +308,7 @@ These require a **teacher** profile (or Django staff/superuser):
 | GET | `/api/resources/<id>/` | Detail + `chunk_count` + courses |
 | POST | `/api/resources/upload/` | **Multipart**: `uploaded_file` (required), optional `course_ids`, optional `resource_type`. **No manual title/author required** — book PDFs must use an ISBN filename. Returns `{ "resource": { ... } }` |
 | POST | `/api/resources/<id>/ingest/` | Re-run ingestion |
-| DELETE | `/api/resources/<id>/` | Deletes SQLite row, uploaded file, and Chroma vectors |
+| DELETE | `/api/resources/<id>/` | Deletes SQLite row, uploaded file and Chroma vectors |
 | POST | `/api/resources/search/` | Semantic search JSON body `{ "query": "...", "top_k": 5, "course_id": 1, "resource_type": "notes", "resource_id": 2 }` (filters optional except `query`) |
 
 Example (teacher basic auth):
